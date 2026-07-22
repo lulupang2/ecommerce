@@ -1,0 +1,10 @@
+const { eq, asc, and } = require('drizzle-orm');
+const { database } = require('../../shared/db'); const { cartItems } = require('../../shared/schema'); const { server, listen } = require('../../shared/http');
+const db = database('cart'); const app = server('cart');
+async function init() { await db.wait(); await db.query(`CREATE TABLE IF NOT EXISTS cart_items (user_id UUID NOT NULL, product_id UUID NOT NULL, name TEXT NOT NULL, brand TEXT NOT NULL, image TEXT, price INTEGER NOT NULL, quantity INTEGER NOT NULL CHECK(quantity>0), PRIMARY KEY(user_id,product_id))`); }
+const responseItem = x => ({ user_id: x.userId, product_id: x.productId, name: x.name, brand: x.brand, image: x.image, price: x.price, quantity: x.quantity });
+app.get('/carts/:userId', async (req, res) => { const rows = await db.orm.select().from(cartItems).where(eq(cartItems.userId, req.params.userId)).orderBy(asc(cartItems.name)); res.json({ items: rows.map(responseItem) }); });
+app.post('/carts/:userId/items', async (req, res) => { const x = req.body; if (!x.productId || !x.name || !x.price) return res.status(400).json({ code: 'INVALID_ITEM' }); await db.orm.insert(cartItems).values({ userId: req.params.userId, productId: x.productId, name: x.name, brand: x.brand, image: x.image, price: x.price, quantity: x.quantity || 1 }).onConflictDoUpdate({ target: [cartItems.userId, cartItems.productId], set: { quantity: x.quantity || 1 } }); res.status(201).end(); });
+app.patch('/carts/:userId/items/:productId', async (req, res) => { const q = Number(req.body.quantity); const where = and(eq(cartItems.userId, req.params.userId), eq(cartItems.productId, req.params.productId)); if (q < 1) await db.orm.delete(cartItems).where(where); else await db.orm.update(cartItems).set({ quantity: q }).where(where); res.status(204).end(); });
+app.delete('/carts/:userId', async (req, res) => { await db.orm.delete(cartItems).where(eq(cartItems.userId, req.params.userId)); res.status(204).end(); });
+init().then(() => listen(app, 'cart')).catch(error => { console.error(error); process.exitCode = 1; });
