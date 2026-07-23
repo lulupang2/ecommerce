@@ -9,6 +9,8 @@ TECHZONE은 한국어 테크·IT 기기 쇼핑몰을 주제로 만든 풀스택 
 - Backend: Node.js 22, Express 5
 - Data & Messaging: PostgreSQL 16, RabbitMQ
 - Infrastructure: Docker Compose, Nginx
+- Storage: MinIO (S3-compatible presigned upload URL)
+- Operations: request ID logs, security headers, per-service rate limit, GitHub Actions CI
 
 ## 빠른 실행
 

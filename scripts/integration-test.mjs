@@ -44,6 +44,7 @@ const search = await request('/search?q=orbit');
 assert.ok(search.items.some(item => item.name.toLowerCase().includes('orbit')));
 const media = await request('/media/upload-url', { method: 'POST', body: JSON.stringify({ ownerId: account.user.id, fileName: 'integration.jpg' }) });
 assert.ok(media.assetId && media.publicUrl);
+assert.equal(media.storage, 's3', 'Docker media storage must use MinIO/S3');
 await request(`/carts/${account.user.id}/items`, { method: 'POST', body: JSON.stringify({ productId: product.id, name: product.name, brand: product.brand, image: product.image, price: product.price, quantity: 1 }) });
 const cart = await request(`/carts/${account.user.id}`);
 assert.equal(cart.items.length, 1);

@@ -65,6 +65,12 @@ TOSS_SECRET_KEY=test_sk_... docker compose up --build -d
 ```
 
 프론트 주문서는 `/api/payments/confirm`을 호출하며, 키가 없으면 Mock 승인, 키가 있으면 Toss 승인 API를 사용합니다. 운영에서는 프론트 결제창에서 발급된 실제 `paymentKey`만 서버로 전달해야 합니다.
+
+## 미디어 저장소
+
+로컬 Docker 환경은 MinIO를 S3 호환 저장소로 실행합니다. 미디어 서비스는 `POST /api/media/upload-url`에서 15분 유효한 presigned PUT URL을 발급하고, `S3_ENDPOINT`가 없을 때만 mock URL로 폴백합니다. MinIO 콘솔은 `http://localhost:19001`에서 확인할 수 있습니다.
+
+모든 서비스는 `X-Request-Id`를 응답하고 JSON 구조 로그를 출력합니다. 서비스별 기본 요청 제한은 IP당 분당 120회입니다.
 3. Order가 `inventory.reserve`를 발행한다.
 4. Inventory가 재고를 예약하고 결과 이벤트를 발행한다.
 5. Order가 `confirmed` 또는 `cancelled`로 전환한다.
