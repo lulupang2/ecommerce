@@ -1,2 +1,2 @@
-import Operations from '../_components/operations';
-export default function ShippingPage(){return <Operations type="shipping"/>}
+import ResourcePage from '../_components/resource-page';
+export default function Page() { return <ResourcePage type="shipments"/>; }

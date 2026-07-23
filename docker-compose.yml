@@ -16,13 +16,13 @@ services:
   auth: &service
     build: { context: . , dockerfile: backend/Dockerfile }
     command: node backend/services/auth/server.js
-    environment: { PORT: 3001, DATABASE_URL: postgres://canvas:canvas@postgres:5432/auth, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, ADMIN_EMAIL: admin@techzone.local, ADMIN_PASSWORD: TechzoneAdmin123!, ADMIN_NAME: TECHZONE Admin }
+    environment: { PORT: 3001, DATABASE_URL: postgres://canvas:canvas@postgres:5432/auth, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, ADMIN_EMAIL: admin@techzone.local, ADMIN_PASSWORD: TechzoneAdmin123!, ADMIN_NAME: TECHZONE Admin }
     depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy } }
     healthcheck: { test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$${PORT}/health >/dev/null || exit 1"], interval: 5s, timeout: 3s, retries: 12, start_period: 5s }
   catalog:
     <<: *service
     command: node backend/services/catalog/server.js
-    environment: { PORT: 3002, DATABASE_URL: postgres://canvas:canvas@postgres:5432/catalog, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret }
+    environment: { PORT: 3002, DATABASE_URL: postgres://canvas:canvas@postgres:5432/catalog, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal }
   cart:
     <<: *service
     command: node backend/services/cart/server.js
@@ -30,15 +30,17 @@ services:
   order:
     <<: *service
     command: node backend/services/order/server.js
-    environment: { PORT: 3004, DATABASE_URL: postgres://canvas:canvas@postgres:5432/orders, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret }
+    environment: { PORT: 3004, DATABASE_URL: postgres://canvas:canvas@postgres:5432/orders, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, AUTH_URL: http://auth:3001, CATALOG_URL: http://catalog:3002 }
+    depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
   payment:
     <<: *service
     command: node backend/services/payment/server.js
-    environment: { PORT: 3005, DATABASE_URL: postgres://canvas:canvas@postgres:5432/payments, RABBIT_URL: amqp://rabbitmq:5672, TOSS_SECRET_KEY: "${TOSS_SECRET_KEY:-}" }
+    environment: { PORT: 3005, DATABASE_URL: postgres://canvas:canvas@postgres:5432/payments, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, TOSS_SECRET_KEY: "${TOSS_SECRET_KEY:-}" }
   inventory:
     <<: *service
     command: node backend/services/inventory/server.js
-    environment: { PORT: 3006, DATABASE_URL: postgres://canvas:canvas@postgres:5432/inventory, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret }
+    environment: { PORT: 3006, DATABASE_URL: postgres://canvas:canvas@postgres:5432/inventory, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, CATALOG_URL: http://catalog:3002 }
+    depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, catalog: { condition: service_healthy } }
   notification:
     <<: *service
     command: node backend/services/notification/server.js
@@ -52,12 +54,27 @@ services:
     command: node backend/services/media/server.js
     environment: { PORT: 3009, DATABASE_URL: postgres://canvas:canvas@postgres:5432/media, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, S3_ENDPOINT: http://minio:9000, S3_PUBLIC_ENDPOINT: http://localhost:19000, S3_ACCESS_KEY: minioadmin, S3_SECRET_KEY: minioadmin, S3_BUCKET: techzone-media }
     depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, minio: { condition: service_healthy } }
+  fulfillment:
+    <<: *service
+    command: node backend/services/fulfillment/server.js
+    environment: { PORT: 3010, DATABASE_URL: postgres://canvas:canvas@postgres:5432/fulfillment, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, ORDER_URL: http://order:3004, INVENTORY_URL: http://inventory:3006, PAYMENT_URL: http://payment:3005 }
+    depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, order: { condition: service_healthy }, inventory: { condition: service_healthy } }
+  procurement:
+    <<: *service
+    command: node backend/services/procurement/server.js
+    environment: { PORT: 3011, DATABASE_URL: postgres://canvas:canvas@postgres:5432/procurement, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, CATALOG_URL: http://catalog:3002, INVENTORY_URL: http://inventory:3006 }
+    depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, catalog: { condition: service_healthy }, inventory: { condition: service_healthy } }
+  admin:
+    <<: *service
+    command: node backend/services/admin/server.js
+    environment: { PORT: 3012, DATABASE_URL: postgres://canvas:canvas@postgres:5432/admin, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, AUTH_URL: http://auth:3001, CATALOG_URL: http://catalog:3002, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, FULFILLMENT_URL: http://fulfillment:3010, PROCUREMENT_URL: http://procurement:3011 }
+    depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy }, order: { condition: service_healthy }, payment: { condition: service_healthy }, inventory: { condition: service_healthy }, fulfillment: { condition: service_healthy }, procurement: { condition: service_healthy } }
   gateway:
     <<: *service
     command: node backend/services/gateway/server.js
-    environment: { PORT: 8080, AUTH_URL: http://auth:3001, CATALOG_URL: http://catalog:3002, CART_URL: http://cart:3003, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, NOTIFICATION_URL: http://notification:3007, SEARCH_URL: http://search:3008, MEDIA_URL: http://media:3009 }
+    environment: { PORT: 8080, AUTH_URL: http://auth:3001, CATALOG_URL: http://catalog:3002, CART_URL: http://cart:3003, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, NOTIFICATION_URL: http://notification:3007, SEARCH_URL: http://search:3008, MEDIA_URL: http://media:3009, FULFILLMENT_URL: http://fulfillment:3010, PROCUREMENT_URL: http://procurement:3011, ADMIN_URL: http://admin:3012 }
     ports: ["18080:8080"]
-    depends_on: [auth, catalog, cart, order, payment, inventory, notification, search, media]
+    depends_on: [auth, catalog, cart, order, payment, inventory, notification, search, media, fulfillment, procurement, admin]
   web:
     build: { context: . , dockerfile: frontend.Dockerfile }
     ports: ["15173:80"]

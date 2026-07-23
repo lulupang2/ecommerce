@@ -1,2 +1,2 @@
-import Operations from '../_components/operations';
-export default function InventoryPage(){return <Operations type="inventory"/>}
+import ResourcePage from '../_components/resource-page';
+export default function Page() { return <ResourcePage type="inventory"/>; }

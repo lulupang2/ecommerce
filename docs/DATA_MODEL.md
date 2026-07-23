@@ -1,66 +1,64 @@
 # TECHZONE 데이터 모델
 
-각 서비스가 독립 PostgreSQL 데이터베이스를 소유한다. 다른 서비스의 ID는 참조 값으로만 보관하며 DB 외래키로 연결하지 않는다.
+서비스는 각자 PostgreSQL DB를 소유한다. 다른 서비스 ID는 논리 참조로만 보관하며 교차 DB 외래키를 만들지 않는다.
 
-## 핵심 관계
+## 서비스별 모델
+
+| DB | 주요 테이블 |
+| --- | --- |
+| Auth | `users`, `roles`, `permissions`, `user_roles`, `role_permissions` |
+| Catalog | `brands`, `categories`, `products`, `product_variants`, `product_images`, `product_specs`, `reviews` |
+| Orders | `orders`, `order_items`, `order_addresses` |
+| Payments | `payments`, `payment_transactions` |
+| Inventory | `warehouses`, `warehouse_bins`, `inventory_balances`, `inventory_movements`, `inventory_reservations`, `serial_numbers`, `stock_alert_rules` |
+| Fulfillment | `shipments`, `shipment_items`, `tracking_events`, `returns`, `return_items` |
+| Procurement | `suppliers`, `supplier_products`, `purchase_orders`, `purchase_order_items`, `goods_receipts`, `goods_receipt_items` |
+| Admin | 도메인별 projection, `daily_kpis`, `operational_alerts`, `audit_logs`, `processed_events` |
+
+## 상품과 재고
 
 ```mermaid
 erDiagram
-  USER ||--o{ CART_ITEM : owns
-  USER ||--o{ ORDER : places
-  PRODUCT ||--o{ CART_ITEM : selected
-  ORDER ||--|{ ORDER_ITEM : contains
+  BRAND ||--o{ PRODUCT : owns
+  CATEGORY ||--o{ PRODUCT : classifies
+  PRODUCT ||--|{ PRODUCT_VARIANT : has
+  PRODUCT ||--o{ PRODUCT_IMAGE : displays
+  PRODUCT ||--o{ PRODUCT_SPEC : describes
+  WAREHOUSE ||--o{ WAREHOUSE_BIN : contains
+  PRODUCT_VARIANT ||--o{ INVENTORY_BALANCE : stocked
+  WAREHOUSE ||--o{ INVENTORY_BALANCE : holds
+  PRODUCT_VARIANT ||--o{ INVENTORY_MOVEMENT : tracked
+  PRODUCT_VARIANT ||--o{ INVENTORY_RESERVATION : reserves
+  PRODUCT_VARIANT ||--o{ SERIAL_NUMBER : identifies
+```
+
+상품의 노출 단위는 product, 판매·가격·재고 단위는 variant다. `available_qty`, `reserved_qty`, `damaged_qty`, `incoming_qty`는 분리한다. 조정·입고·예약·출고·이동은 movement 원장을 남기며 가용 수량을 음수로 만들 수 없다.
+
+## 주문과 이행
+
+```mermaid
+erDiagram
+  ORDER ||--|{ ORDER_ITEM : snapshots
+  ORDER ||--|{ ORDER_ADDRESS : snapshots
   ORDER ||--o| PAYMENT : paid_by
-  PRODUCT ||--o| STOCK : tracked_by
-  USER ||--o{ NOTIFICATION : receives
-
-  USER { uuid id PK string email string password_hash string name string role timestamptz created_at }
-  PRODUCT { uuid id PK string name string brand string category int price string note string color string image int stock string status }
-  CART_ITEM { uuid user_id PK uuid product_id PK string name string brand int price int quantity }
-  ORDER { uuid id PK uuid user_id string order_number string status int total_amount string recipient string phone string address }
-  ORDER_ITEM { uuid id PK uuid order_id FK uuid product_id string name string brand int unit_price int quantity }
-  PAYMENT { uuid id PK uuid order_id string status int amount string provider string payment_key }
-  STOCK { uuid product_id PK int available_qty int version }
-  NOTIFICATION { uuid id PK uuid user_id string type string message timestamptz read_at }
+  PAYMENT ||--|{ PAYMENT_TRANSACTION : records
+  ORDER ||--o| SHIPMENT : fulfilled_by
+  SHIPMENT ||--|{ SHIPMENT_ITEM : contains
+  SHIPMENT ||--o{ TRACKING_EVENT : tracks
+  ORDER ||--o{ RETURN : requests
+  RETURN ||--|{ RETURN_ITEM : contains
 ```
 
-## 서비스별 테이블
+주문, 결제, 출고 상태는 각각 독립 ENUM이다. 주문 품목은 SKU·상품명·가격·할인·세금을, 주소는 수령인·연락처·주소를 snapshot으로 보존한다. 결제 transaction은 승인·취소·환불의 append-only 기록이다.
 
-| DB | 테이블 | 핵심 제약 |
-| --- | --- | --- |
-| auth | users | `email` unique, role 기본값 `customer` |
-| catalog | products | 가격·재고 정수, status 기본값 `published` |
-| cart | cart_items | `(user_id, product_id)` PK, quantity > 0 |
-| orders | orders | `order_number` unique, 상태 기본 `pending` |
-| orders | order_items | 주문 당시 상품명·브랜드·가격 snapshot 저장 |
-| payments | payments | `order_id` unique |
-| inventory | stock | `product_id` PK, 조건부 UPDATE로 재고 차감 |
-| notifications | notifications | 사용자별 생성 시간 역순 조회 |
-| search | search_events | event ID PK로 상품 이벤트 중복 방지 |
-| media | media_assets | 객체 키와 공개 URL 메타데이터 저장 |
+## 공급과 입고
 
-## 주문 상태
+공급사는 variant별 공급 SKU·원가·리드타임을 가진다. 발주서는 `draft → approved → partially_received → received`로 전이한다. 입고 확정은 goods receipt를 남기고 `inventory.received` 이벤트로 Inventory 원장을 갱신한다.
 
-## 상품·재고 운영 설계 점검
+## 핵심 제약
 
-- `products.stock`은 상품 등록 시점의 초기/표시 재고 스냅샷입니다.
-- 실제 판매 가능 수량과 동시성 제어는 `stock.available_qty`가 담당합니다.
-- `stock.version`은 예약·관리자 수정 시 증가해 낙관적 동시성 추적에 사용합니다.
-- Catalog와 Inventory는 MSA에서 서로 다른 데이터베이스를 소유하므로 물리적 FK 대신 `products.id = stock.product_id` 논리 관계와 이벤트 검증으로 연결합니다.
-- 상품 상세 리치 콘텐츠는 현재 `products.note`에 HTML 문자열로 저장하며, 추후 별도 `product_contents` 테이블로 분리할 수 있습니다.
-- 이미지 바이너리는 DB에 저장하지 않고 `media_assets` 메타데이터와 MinIO 객체로 분리합니다.
-
-```text
-pending -> confirmed
-pending -> cancelled
-```
-
-현재 MVP는 Mock 결제 승인과 재고 예약을 하나의 비동기 흐름으로 처리한다. 실제 결제를 도입하면 `pending_payment`, `paid`, `preparing`, `shipped`, `delivered`, `refunded` 상태와 전이 규칙을 추가한다.
-
-## 데이터 무결성 보완 계획
-
-- 주문 생성 시 Catalog가 제공한 가격을 서버에서 다시 확인한다.
-- 재고 예약에 reservation과 만료 시간을 추가한다.
-- 모든 이벤트 생산 서비스에 outbox 테이블을 추가한다.
-- 소비 서비스에 processed event/inbox 테이블을 추가한다.
-- 개인정보가 포함된 배송 정보는 보존 기간과 암호화 정책을 적용한다.
+- `product_variants.sku`, `orders.order_number`, `shipments.tracking_number`, 각 업무 번호는 unique
+- 수량과 금액은 0 이상, 주문·발주 품목 수량은 1 이상
+- 예약량은 가용량을 초과할 수 없고 이동은 출발·도착 movement를 한 쌍으로 기록
+- serial은 variant 단위 unique이며 창고·상태 이력을 가진다
+- 이벤트 소비는 event ID를 `processed_events`에 먼저 기록해 멱등 처리

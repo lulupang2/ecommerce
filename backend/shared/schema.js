@@ -1,30 +1,73 @@
-const { pgTable, pgEnum, uuid, text, integer, timestamp } = require('drizzle-orm/pg-core');
+const { pgTable, pgEnum, uuid, text, integer, timestamp, jsonb, boolean } = require('drizzle-orm/pg-core');
+
 const orderStatus = pgEnum('order_status', ['pending', 'confirmed', 'preparing', 'shipped', 'delivered', 'cancelled']);
-const productStatus = pgEnum('product_status', ['published', 'hidden', 'archived']);
+const paymentStatus = pgEnum('payment_status', ['pending', 'approved', 'partially_refunded', 'refunded', 'cancelled', 'failed']);
+const fulfillmentStatus = pgEnum('fulfillment_status', ['unfulfilled', 'ready', 'shipped', 'delivered', 'returned']);
+const productStatus = pgEnum('product_status', ['draft', 'published', 'hidden', 'archived']);
+const shipmentStatus = pgEnum('shipment_status', ['ready', 'packed', 'shipped', 'delivered', 'cancelled']);
+const returnStatus = pgEnum('return_status', ['requested', 'approved', 'received', 'refunded', 'rejected']);
+const purchaseOrderStatus = pgEnum('purchase_order_status', ['draft', 'approved', 'partially_received', 'received', 'cancelled']);
 
 const users = pgTable('users', {
   id: uuid('id').primaryKey(), email: text('email').notNull().unique(), passwordHash: text('password_hash').notNull(),
-  name: text('name').notNull(), role: text('role').notNull().default('customer'), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  name: text('name').notNull(), role: text('role').notNull().default('customer'), phone: text('phone'), status: text('status').notNull().default('active'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
+const roles = pgTable('roles', { id: uuid('id').primaryKey(), code: text('code').notNull().unique(), name: text('name').notNull(), description: text('description') });
+const permissions = pgTable('permissions', { id: uuid('id').primaryKey(), code: text('code').notNull().unique(), name: text('name').notNull() });
+const userRoles = pgTable('user_roles', { userId: uuid('user_id').notNull(), roleId: uuid('role_id').notNull() });
+const rolePermissions = pgTable('role_permissions', { roleId: uuid('role_id').notNull(), permissionId: uuid('permission_id').notNull() });
+
+const brands = pgTable('brands', { id: uuid('id').primaryKey(), name: text('name').notNull().unique(), slug: text('slug').notNull().unique(), status: text('status').notNull().default('active') });
+const categories = pgTable('categories', { id: uuid('id').primaryKey(), parentId: uuid('parent_id'), name: text('name').notNull(), slug: text('slug').notNull().unique(), displayOrder: integer('display_order').notNull().default(0) });
 const products = pgTable('products', {
-  id: uuid('id').primaryKey(), name: text('name').notNull(), brand: text('brand').notNull(), category: text('category').notNull(),
-  price: integer('price').notNull(), note: text('note'), color: text('color'), image: text('image'), stock: integer('stock').notNull(), status: productStatus('status').default('published'), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  id: uuid('id').primaryKey(), brandId: uuid('brand_id'), categoryId: uuid('category_id'), slug: text('slug'), name: text('name').notNull(), brand: text('brand').notNull(), category: text('category').notNull(),
+  price: integer('price').notNull(), note: text('note'), color: text('color'), image: text('image'), stock: integer('stock').notNull().default(0), status: productStatus('status').default('published'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
-const cartItems = pgTable('cart_items', {
-  userId: uuid('user_id').notNull(), productId: uuid('product_id').notNull(), name: text('name').notNull(), brand: text('brand').notNull(), image: text('image'), price: integer('price').notNull(), quantity: integer('quantity').notNull(),
+const productVariants = pgTable('product_variants', {
+  id: uuid('id').primaryKey(), productId: uuid('product_id').notNull(), sku: text('sku').notNull().unique(), modelNumber: text('model_number').notNull(), barcode: text('barcode').unique(),
+  optionValues: jsonb('option_values').notNull().default({}), listPrice: integer('list_price').notNull(), salePrice: integer('sale_price').notNull(), costPrice: integer('cost_price').notNull(),
+  weightGram: integer('weight_gram').notNull().default(0), status: text('status').notNull().default('active'), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
+const productImages = pgTable('product_images', { id: uuid('id').primaryKey(), productId: uuid('product_id').notNull(), variantId: uuid('variant_id'), url: text('url').notNull(), alt: text('alt'), displayOrder: integer('display_order').notNull().default(0), isPrimary: boolean('is_primary').notNull().default(false) });
+const productSpecs = pgTable('product_specs', { id: uuid('id').primaryKey(), productId: uuid('product_id').notNull(), specKey: text('spec_key').notNull(), specValue: text('spec_value').notNull(), displayOrder: integer('display_order').notNull().default(0) });
+
+const cartItems = pgTable('cart_items', { userId: uuid('user_id').notNull(), productId: uuid('product_id').notNull(), name: text('name').notNull(), brand: text('brand').notNull(), image: text('image'), price: integer('price').notNull(), quantity: integer('quantity').notNull() });
 const orders = pgTable('orders', {
-  id: uuid('id').primaryKey(), userId: uuid('user_id').notNull(), orderNumber: text('order_number').notNull().unique(), status: orderStatus('status').notNull(), totalAmount: integer('total_amount').notNull(), recipient: text('recipient').notNull(), phone: text('phone').notNull(), address: text('address').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  id: uuid('id').primaryKey(), userId: uuid('user_id').notNull(), orderNumber: text('order_number').notNull().unique(), status: orderStatus('status').notNull(), paymentStatus: paymentStatus('payment_status').notNull().default('pending'), fulfillmentStatus: fulfillmentStatus('fulfillment_status').notNull().default('unfulfilled'),
+  subtotalAmount: integer('subtotal_amount').notNull().default(0), discountAmount: integer('discount_amount').notNull().default(0), taxAmount: integer('tax_amount').notNull().default(0), totalAmount: integer('total_amount').notNull(),
+  recipient: text('recipient').notNull(), phone: text('phone').notNull(), address: text('address').notNull(), memo: text('memo'), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
-const orderItems = pgTable('order_items', {
-  id: uuid('id').primaryKey(), orderId: uuid('order_id').notNull(), productId: uuid('product_id').notNull(), name: text('name').notNull(), brand: text('brand').notNull(), image: text('image'), unitPrice: integer('unit_price').notNull(), quantity: integer('quantity').notNull(),
-});
-const notifications = pgTable('notifications', {
-  id: uuid('id').primaryKey(), userId: uuid('user_id').notNull(), type: text('type').notNull(), message: text('message').notNull(), readAt: timestamp('read_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+const orderItems = pgTable('order_items', { id: uuid('id').primaryKey(), orderId: uuid('order_id').notNull(), productId: uuid('product_id').notNull(), variantId: uuid('variant_id'), sku: text('sku'), name: text('name').notNull(), brand: text('brand').notNull(), image: text('image'), unitPrice: integer('unit_price').notNull(), discountAmount: integer('discount_amount').notNull().default(0), taxAmount: integer('tax_amount').notNull().default(0), quantity: integer('quantity').notNull() });
+const orderAddresses = pgTable('order_addresses', { id: uuid('id').primaryKey(), orderId: uuid('order_id').notNull(), type: text('type').notNull(), recipient: text('recipient').notNull(), phone: text('phone').notNull(), postalCode: text('postal_code'), address1: text('address1').notNull(), address2: text('address2') });
+
+const payments = pgTable('payments', { id: uuid('id').primaryKey(), orderId: uuid('order_id').notNull().unique(), status: paymentStatus('status').notNull(), amount: integer('amount').notNull(), refundedAmount: integer('refunded_amount').notNull().default(0), provider: text('provider').notNull(), paymentKey: text('payment_key'), approvedAt: timestamp('approved_at', { withTimezone: true }) });
+const paymentTransactions = pgTable('payment_transactions', { id: uuid('id').primaryKey(), paymentId: uuid('payment_id').notNull(), orderId: uuid('order_id').notNull(), type: text('type').notNull(), status: text('status').notNull(), amount: integer('amount').notNull(), reason: text('reason'), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow() });
+
+const warehouses = pgTable('warehouses', { id: uuid('id').primaryKey(), code: text('code').notNull().unique(), name: text('name').notNull(), type: text('type').notNull(), address: text('address'), active: boolean('active').notNull().default(true) });
+const warehouseBins = pgTable('warehouse_bins', { id: uuid('id').primaryKey(), warehouseId: uuid('warehouse_id').notNull(), code: text('code').notNull(), name: text('name').notNull() });
+const inventoryBalances = pgTable('inventory_balances', { id: uuid('id').primaryKey(), warehouseId: uuid('warehouse_id').notNull(), variantId: uuid('variant_id').notNull(), availableQty: integer('available_qty').notNull().default(0), reservedQty: integer('reserved_qty').notNull().default(0), damagedQty: integer('damaged_qty').notNull().default(0), incomingQty: integer('incoming_qty').notNull().default(0), version: integer('version').notNull().default(0), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow() });
+const inventoryMovements = pgTable('inventory_movements', { id: uuid('id').primaryKey(), warehouseId: uuid('warehouse_id').notNull(), variantId: uuid('variant_id').notNull(), type: text('type').notNull(), quantity: integer('quantity').notNull(), reason: text('reason'), referenceType: text('reference_type'), referenceId: uuid('reference_id'), actorId: uuid('actor_id'), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow() });
+const inventoryReservations = pgTable('inventory_reservations', { id: uuid('id').primaryKey(), orderId: uuid('order_id').notNull(), warehouseId: uuid('warehouse_id').notNull(), variantId: uuid('variant_id').notNull(), quantity: integer('quantity').notNull(), status: text('status').notNull(), expiresAt: timestamp('expires_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow() });
+const serialNumbers = pgTable('serial_numbers', { id: uuid('id').primaryKey(), variantId: uuid('variant_id').notNull(), warehouseId: uuid('warehouse_id').notNull(), serialNumber: text('serial_number').notNull().unique(), status: text('status').notNull(), orderId: uuid('order_id'), receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow() });
+const stockAlertRules = pgTable('stock_alert_rules', { id: uuid('id').primaryKey(), warehouseId: uuid('warehouse_id').notNull(), variantId: uuid('variant_id').notNull(), safetyQty: integer('safety_qty').notNull().default(5), reorderQty: integer('reorder_qty').notNull().default(20) });
 const stock = pgTable('stock', { productId: uuid('product_id').primaryKey(), availableQty: integer('available_qty').notNull().default(99), version: integer('version').notNull().default(0) });
-const payments = pgTable('payments', { id: uuid('id').primaryKey(), orderId: uuid('order_id').notNull().unique(), status: text('status').notNull(), amount: integer('amount').notNull(), provider: text('provider').notNull(), paymentKey: text('payment_key'), approvedAt: timestamp('approved_at', { withTimezone: true }) });
+
+const shipments = pgTable('shipments', { id: uuid('id').primaryKey(), orderId: uuid('order_id').notNull(), shipmentNumber: text('shipment_number').notNull().unique(), warehouseId: uuid('warehouse_id').notNull(), carrier: text('carrier').notNull(), trackingNumber: text('tracking_number').unique(), status: shipmentStatus('status').notNull(), shippedAt: timestamp('shipped_at', { withTimezone: true }), deliveredAt: timestamp('delivered_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow() });
+const shipmentItems = pgTable('shipment_items', { id: uuid('id').primaryKey(), shipmentId: uuid('shipment_id').notNull(), orderItemId: uuid('order_item_id').notNull(), variantId: uuid('variant_id'), quantity: integer('quantity').notNull() });
+const trackingEvents = pgTable('tracking_events', { id: uuid('id').primaryKey(), shipmentId: uuid('shipment_id').notNull(), status: text('status').notNull(), location: text('location'), message: text('message').notNull(), occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull() });
+const returns = pgTable('returns', { id: uuid('id').primaryKey(), orderId: uuid('order_id').notNull(), returnNumber: text('return_number').notNull().unique(), status: returnStatus('status').notNull(), reason: text('reason').notNull(), refundAmount: integer('refund_amount').notNull().default(0), requestedAt: timestamp('requested_at', { withTimezone: true }).defaultNow(), completedAt: timestamp('completed_at', { withTimezone: true }) });
+const returnItems = pgTable('return_items', { id: uuid('id').primaryKey(), returnId: uuid('return_id').notNull(), orderItemId: uuid('order_item_id').notNull(), variantId: uuid('variant_id'), quantity: integer('quantity').notNull(), condition: text('condition') });
+
+const suppliers = pgTable('suppliers', { id: uuid('id').primaryKey(), code: text('code').notNull().unique(), name: text('name').notNull(), contactName: text('contact_name'), phone: text('phone'), email: text('email'), status: text('status').notNull().default('active') });
+const supplierProducts = pgTable('supplier_products', { id: uuid('id').primaryKey(), supplierId: uuid('supplier_id').notNull(), variantId: uuid('variant_id').notNull(), supplierSku: text('supplier_sku'), unitCost: integer('unit_cost').notNull(), leadTimeDays: integer('lead_time_days').notNull().default(7) });
+const purchaseOrders = pgTable('purchase_orders', { id: uuid('id').primaryKey(), purchaseOrderNumber: text('purchase_order_number').notNull().unique(), supplierId: uuid('supplier_id').notNull(), warehouseId: uuid('warehouse_id').notNull(), status: purchaseOrderStatus('status').notNull(), totalAmount: integer('total_amount').notNull(), expectedAt: timestamp('expected_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow() });
+const purchaseOrderItems = pgTable('purchase_order_items', { id: uuid('id').primaryKey(), purchaseOrderId: uuid('purchase_order_id').notNull(), variantId: uuid('variant_id').notNull(), sku: text('sku').notNull(), quantity: integer('quantity').notNull(), receivedQty: integer('received_qty').notNull().default(0), unitCost: integer('unit_cost').notNull() });
+const goodsReceipts = pgTable('goods_receipts', { id: uuid('id').primaryKey(), receiptNumber: text('receipt_number').notNull().unique(), purchaseOrderId: uuid('purchase_order_id').notNull(), warehouseId: uuid('warehouse_id').notNull(), receivedBy: uuid('received_by'), receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow() });
+
+const notifications = pgTable('notifications', { id: uuid('id').primaryKey(), userId: uuid('user_id').notNull(), type: text('type').notNull(), message: text('message').notNull(), readAt: timestamp('read_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow() });
 const mediaAssets = pgTable('media_assets', { id: uuid('id').primaryKey(), ownerId: uuid('owner_id'), contentType: text('content_type').notNull(), objectKey: text('object_key').notNull(), publicUrl: text('public_url').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow() });
 const searchEvents = pgTable('search_events', { id: uuid('id').primaryKey(), eventType: text('event_type').notNull(), receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow() });
 
-module.exports = { users, products, cartItems, orders, orderItems, notifications, stock, payments, mediaAssets, searchEvents, orderStatus, productStatus };
+module.exports = { users, roles, permissions, userRoles, rolePermissions, brands, categories, products, productVariants, productImages, productSpecs, cartItems, orders, orderItems, orderAddresses, payments, paymentTransactions, warehouses, warehouseBins, inventoryBalances, inventoryMovements, inventoryReservations, serialNumbers, stockAlertRules, stock, shipments, shipmentItems, trackingEvents, returns, returnItems, suppliers, supplierProducts, purchaseOrders, purchaseOrderItems, goodsReceipts, notifications, mediaAssets, searchEvents, orderStatus, paymentStatus, fulfillmentStatus, productStatus, shipmentStatus, returnStatus, purchaseOrderStatus };

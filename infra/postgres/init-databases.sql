@@ -7,3 +7,6 @@ CREATE DATABASE inventory;
 CREATE DATABASE notifications;
 CREATE DATABASE search;
 CREATE DATABASE media;
+CREATE DATABASE fulfillment;
+CREATE DATABASE procurement;
+CREATE DATABASE admin;

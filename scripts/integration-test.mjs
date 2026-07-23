@@ -10,7 +10,7 @@ async function request(path, options = {}) {
 }
 
 const email = `test-${Date.now()}@canvas.local`;
-for (const service of ['auth', 'catalog', 'cart', 'order', 'payment', 'inventory', 'notification', 'search', 'media']) {
+for (const service of ['auth', 'catalog', 'cart', 'order', 'payment', 'inventory', 'notification', 'search', 'media', 'fulfillment', 'procurement', 'admin']) {
   const health = await request(`/health/${service}`);
   assert.equal(health.status, 'ok', `${service} must be healthy`);
 }
@@ -28,6 +28,8 @@ assert.equal(adminLogin.user.role, 'admin');
 const adminHeaders = { 'content-type': 'application/json', authorization: `Bearer ${adminLogin.accessToken}` };
 const adminUsers = await request('/auth/users', { headers: adminHeaders });
 assert.ok(adminUsers.items.some(user => user.email === (process.env.ADMIN_EMAIL || 'admin@techzone.local')), 'admin member list must include seeded admin');
+const roles = await request('/admin/roles', { headers: adminHeaders });
+assert.ok(roles.items.some(role => role.code === 'super_admin'), 'RBAC roles must be seeded');
 const catalog = await request('/products');
 assert.ok(catalog.items.length >= 8, 'seed catalog must contain products');
 const product = catalog.items[0];
@@ -47,6 +49,8 @@ assert.ok(search.items.some(item => item.name.toLowerCase().includes('orbit')));
 const media = await request('/media/upload-url', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ fileName: 'integration.jpg' }) });
 assert.ok(media.assetId && media.publicUrl);
 assert.equal(media.storage, 's3', 'Docker media storage must use MinIO/S3');
+const forbiddenMedia = await fetch(`${base}/media/upload-url`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${login.accessToken}` }, body: JSON.stringify({ fileName: 'forbidden.jpg' }) });
+assert.equal(forbiddenMedia.status, 403, 'customer must not issue media upload URL');
 await request(`/carts/${account.user.id}/items`, { method: 'POST', body: JSON.stringify({ productId: product.id, name: product.name, brand: product.brand, image: product.image, price: product.price, quantity: 1 }) });
 const cart = await request(`/carts/${account.user.id}`);
 assert.equal(cart.items.length, 1);
@@ -57,17 +61,46 @@ let result;
 for (let attempt = 0; attempt < 12; attempt += 1) {
   await new Promise(resolve => setTimeout(resolve, 500));
   result = await request(`/orders/${order.id}`);
-  if (result.status === 'confirmed') break;
+  if (['confirmed', 'preparing'].includes(result.status)) break;
 }
-assert.equal(result.status, 'confirmed', 'order saga must confirm the order');
+assert.ok(['confirmed', 'preparing'].includes(result.status), 'order saga must confirm the order and may immediately advance to fulfillment');
 const orderHistory = await request(`/orders?userId=${account.user.id}`);
 assert.ok(orderHistory.items.some(item => item.id === order.id), 'created order must appear in order history');
 const adminOrders = await request('/orders', { headers: adminHeaders });
 assert.ok(adminOrders.items.some(item => item.id === order.id), 'admin order list must include created order');
-await request(`/orders/${order.id}/status`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ status: 'confirmed' }) });
+let shipment;
+for (let attempt = 0; attempt < 12; attempt += 1) {
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const shipmentPage = await request('/admin/shipments?page=1&pageSize=100', { headers: adminHeaders });
+  shipment = shipmentPage.items.find(item => item.order_id === order.id);
+  if (shipment) break;
+}
+assert.ok(shipment, 'confirmed order must create a shipment');
+await request(`/fulfillment/shipments/${shipment.shipment_id}/status`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ status: 'packed', reason: 'integration packing' }) });
+await request(`/fulfillment/shipments/${shipment.shipment_id}/status`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ status: 'shipped', trackingNumber: `TEST${Date.now()}`, reason: 'integration shipping' }) });
+await request(`/fulfillment/shipments/${shipment.shipment_id}/status`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ status: 'delivered', reason: 'integration delivered' }) });
+const createdReturn = await request('/fulfillment/returns', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ orderId: order.id, reason: 'integration return', refundAmount: order.totalAmount }) });
+await request(`/fulfillment/returns/${createdReturn.id}/status`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ status: 'approved', reason: 'integration approved' }) });
+await request(`/fulfillment/returns/${createdReturn.id}/status`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ status: 'received', reason: 'integration received' }) });
+const refund = await request(`/fulfillment/returns/${createdReturn.id}/refund`, { method: 'POST', headers: adminHeaders, body: JSON.stringify({ amount: order.totalAmount, reason: 'integration refund' }) });
+assert.equal(refund.status, 'refunded', 'received return must be refunded');
 const notifications = await request(`/notifications/${account.user.id}`);
 assert.ok(notifications.items.length > 0, 'confirmed order must generate a notification');
 await request(`/carts/${account.user.id}`, { method: 'DELETE' });
 const clearedCart = await request(`/carts/${account.user.id}`);
 assert.equal(clearedCart.items.length, 0, 'cart must clear after checkout');
-console.log(JSON.stringify({ status: 'passed', userId: account.user.id, orderNumber: result.order_number, products: catalog.items.length }));
+const rebuilt = await request('/admin/rebuild', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ reason: 'integration rebuild' }) });
+assert.ok(rebuilt.orders > 0 && rebuilt.products >= 8, 'admin read model must rebuild from source services');
+const dashboard = await request('/admin/dashboard', { headers: adminHeaders });
+assert.ok(dashboard.kpis && Array.isArray(dashboard.trend), 'admin dashboard projection must return KPI and trend');
+const adminProductPage = await request('/admin/products?page=1&pageSize=10&sort=price&direction=desc', { headers: adminHeaders });
+assert.equal(adminProductPage.pageSize, 10, 'admin tables must use server pagination');
+const auditLogs = await request('/admin/audit-logs?page=1&pageSize=100', { headers: adminHeaders });
+assert.ok(auditLogs.items.some(item => item.action === 'admin.projection_rebuilt'), 'admin mutation must create audit log');
+await request(`/auth/users/${account.user.id}/role`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ role: 'viewer' }) });
+const viewerLogin = await request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password: 'Canvas1234!' }) });
+const viewerHeaders = { 'content-type': 'application/json', authorization: `Bearer ${viewerLogin.accessToken}` };
+await request('/admin/dashboard', { headers: viewerHeaders });
+const viewerMutation = await fetch(`${base}/products/${product.id}`, { method: 'PATCH', headers: viewerHeaders, body: JSON.stringify({ price: originalPrice + 100 }) });
+assert.equal(viewerMutation.status, 403, 'viewer must not mutate products');
+console.log(JSON.stringify({ status: 'passed', userId: account.user.id, orderNumber: result.order_number, products: catalog.items.length, shipment: shipment.shipment_number, returnNumber: createdReturn.returnNumber, adminProjection: rebuilt }));

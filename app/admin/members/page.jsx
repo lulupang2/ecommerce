@@ -1,2 +1,2 @@
-import Operations from '../_components/operations';
-export default function MembersPage(){return <Operations type="members"/>}
+import ResourcePage from '../_components/resource-page';
+export default function Page() { return <ResourcePage type="members"/>; }

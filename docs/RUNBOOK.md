@@ -4,77 +4,56 @@
 
 - Node.js 22+
 - Docker Desktop
-- Android 빌드 시 JDK 21과 Android SDK
+- Android 빌드: JDK 21, Android SDK
 
-## 전체 MSA 실행
+## 실행과 로그인
 
 ```bash
 npm install
 docker compose up --build -d
-```
-
-- 웹: `http://localhost:15173`
-- Gateway: `http://localhost:18080`
-- 상품 API: `GET http://localhost:18080/api/products`
-
-상태 확인:
-
-```bash
 docker compose ps
+```
+
+- 웹·관리자: `http://localhost:15173`
+- Gateway: `http://localhost:18080/api`
+- MinIO 콘솔: `http://localhost:19001`
+- 관리자 계정: `admin@techzone.local` / `TechzoneAdmin123!`
+
+관리자로 로그인하면 `/admin` 대시보드로 이동한다.
+
+## 검증
+
+```bash
+npm run build
 npm run test:integration
-```
-
-## 프론트엔드 개발
-
-Gateway 컨테이너를 실행한 상태에서:
-
-```bash
-npm run dev
-```
-
-정적 배포 산출물 확인:
-
-```bash
-npm run build
-```
-
-## Android 빌드
-
-```bash
-npm run build
 npm run mobile:sync
 cd android
 gradlew.bat assembleDebug
 ```
 
-APK 위치: `android/app/build/outputs/apk/debug/app-debug.apk`
+통합 테스트는 health, 고객/관리자 접근 제어, 주문→결제→재고예약→출고→배송, 반품→환불, projection rebuild, 서버 테이블, 감사로그, viewer 쓰기 차단을 검증한다.
 
-Windows 작업 경로에 한글이 포함되어 있어 `android/gradle.properties`에 `android.overridePathCheck=true`를 사용한다.
+APK: `android/app/build/outputs/apk/debug/app-debug.apk`
 
-## 주문 Saga 확인
+## DB 초기화와 projection 복구
 
-1. Order가 `order.created`를 발행한다.
-2. Payment가 Mock 승인 후 `payment.approved`를 발행한다.
-
-## 결제 모드
-
-기본 Docker 실행은 Mock 결제입니다. Toss Payments Sandbox를 사용하려면 실행 전에 `TOSS_SECRET_KEY` 환경변수를 설정합니다.
+개발 데이터를 완전히 재생성할 때만 다음 명령을 사용한다.
 
 ```bash
-TOSS_SECRET_KEY=test_sk_... docker compose up --build -d
+docker compose down -v
+docker compose up --build -d
 ```
 
-프론트 주문서는 `/api/payments/confirm`을 호출하며, 키가 없으면 Mock 승인, 키가 있으면 Toss 승인 API를 사용합니다. 운영에서는 프론트 결제창에서 발급된 실제 `paymentKey`만 서버로 전달해야 합니다.
+초기 시드는 테크 상품 variant 8개, 중앙·반품 창고, 주문·배송·반품, 공급사·발주를 만든다. 운영 projection만 복구하려면 슈퍼관리자 토큰으로 `POST /api/admin/rebuild`를 호출한다.
 
-## 미디어 저장소
+## 운영 점검
 
-로컬 Docker 환경은 MinIO를 S3 호환 저장소로 실행합니다. 미디어 서비스는 `POST /api/media/upload-url`에서 15분 유효한 presigned PUT URL을 발급하고, `S3_ENDPOINT`가 없을 때만 mock URL로 폴백합니다. MinIO 콘솔은 `http://localhost:19001`에서 확인할 수 있습니다.
+```bash
+docker compose logs --tail=100 admin order inventory fulfillment procurement
+docker compose exec -T postgres psql -U canvas -d admin
+```
 
-모든 서비스는 `X-Request-Id`를 응답하고 JSON 구조 로그를 출력합니다. 서비스별 기본 요청 제한은 IP당 분당 120회입니다.
-3. Order가 `inventory.reserve`를 발행한다.
-4. Inventory가 재고를 예약하고 결과 이벤트를 발행한다.
-5. Order가 `confirmed` 또는 `cancelled`로 전환한다.
-6. Notification이 사용자 알림을 저장한다.
+모든 서비스가 healthy이고 대시보드 KPI가 원본 데이터와 일치해야 한다. Mock 결제와 Mock 택배 adapter가 기본이며 실제 provider secret은 저장소에 커밋하지 않는다.
 
 ## 종료
 
@@ -82,4 +61,4 @@ TOSS_SECRET_KEY=test_sk_... docker compose up --build -d
 docker compose down
 ```
 
-데이터 볼륨까지 삭제하는 `docker compose down -v`는 테스트 데이터를 모두 제거하므로 의도한 경우에만 실행한다.
+`-v`는 모든 개발 데이터를 삭제하므로 초기화가 명시적으로 필요할 때만 사용한다.
