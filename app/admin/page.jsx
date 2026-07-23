@@ -1,17 +1,78 @@
 'use client';
+
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart, Bar, LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { EditorContent, useEditor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
+import { BarChart, Bar, CartesianGrid, LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { ArrowRight, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { readSession } from '@/lib/session';
-const API=process.env.NEXT_PUBLIC_API_BASE_URL||'http://localhost:18080/api'; const labels={pending:'결제 대기',confirmed:'주문 확정',preparing:'상품 준비',shipped:'배송 중',delivered:'배송 완료',cancelled:'주문 취소'}; const states=Object.keys(labels); const won=v=>`${new Intl.NumberFormat('ko-KR').format(v)}원`;
-export default function AdminPage(){const[s,setS]=useState();const[t,setT]=useState('dashboard');const[d,setD]=useState({products:[],inventory:[],orders:[],users:[],reviews:[]});const[msg,setMsg]=useState('');const[loading,setLoading]=useState(true);const auth={authorization:`Bearer ${s?.accessToken}`}; async function load(){setLoading(true);const o={headers:auth};const [products,inventory,orders,users,reviews]=await Promise.all(['products?status=all','inventory','orders','auth/users','reviews'].map(x=>fetch(`${API}/${x}`,o).then(r=>r.json())));setD({products:products.items||[],inventory:inventory.items||[],orders:orders.items||[],users:users.items||[],reviews:reviews.items||[]});setLoading(false)} useEffect(()=>setS(readSession()),[]);useEffect(()=>{if(s?.user?.role==='admin')load().catch(e=>{setMsg(e.message);setLoading(false)})},[s]); if(s!==undefined&&s?.user?.role!=='admin')return <main className="grid min-h-screen place-items-center bg-slate-100"><div className="rounded-3xl bg-white p-10 text-center"><h1 className="text-2xl font-black">관리자 로그인이 필요합니다</h1><a className="mt-6 inline-block rounded-xl bg-slate-950 px-5 py-3 text-white" href="/login/">로그인</a></div></main>; const save=async(path,body)=>{const r=await fetch(`${API}/${path}`,{method:'PATCH',headers:{'content-type':'application/json',...auth},body:JSON.stringify(body)});if(!r.ok)throw Error('저장 실패');setMsg('저장했습니다.');load()}; return <main className="min-h-screen bg-slate-100 p-5 text-slate-950 md:p-8"><header className="mx-auto flex max-w-7xl items-center justify-between"><div><p className="text-xs font-bold tracking-[.2em] text-blue-600">TECHZONE CMS</p><h1 className="mt-2 text-4xl font-black">운영 콘솔</h1></div><Button variant="outline" onClick={load}>새로고침</Button></header><nav className="mx-auto mt-8 flex max-w-7xl gap-2 overflow-auto">{['dashboard','members','products','inventory','orders','reviews'].map(x=><button key={x} onClick={()=>setT(x)} className={`rounded-full px-4 py-2 text-sm font-bold ${t===x?'bg-slate-950 text-white':'bg-white'}`}>{({dashboard:'대시보드',members:'회원',products:'상품',inventory:'재고·물류',orders:'주문·배송',reviews:'리뷰'})[x]}</button>)}</nav>{msg&&<p className="mx-auto mt-5 max-w-7xl rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{msg}</p>}{loading?<p className="mx-auto mt-8 max-w-7xl rounded-2xl bg-white p-8">불러오는 중…</p>:<section className="mx-auto mt-8 max-w-7xl">{t==='dashboard'&&<Dashboard d={d}/>} {t==='members'&&<Members users={d.users}/>} {t==='products'&&<Products products={d.products} save={save} auth={auth} setMsg={setMsg}/>} {t==='inventory'&&<Inventory products={d.products} inventory={d.inventory} save={save}/>} {t==='orders'&&<Orders orders={d.orders} save={save}/>} {t==='reviews'&&<Reviews reviews={d.reviews} save={save}/>}</section>}</main>}
-function Dashboard({d}){const data=states.map(s=>({name:labels[s],orders:d.orders.filter(x=>x.status===s).length}));const trend=states.slice(0,5).map((s,i)=>({name:labels[s],orders:data[i].orders,revenue:data[i].orders*100000}));return <div className="grid gap-6"><div className="grid gap-4 md:grid-cols-4">{[['매출',won(d.orders.reduce((a,x)=>a+x.total_amount,0))],['회원',d.users.length],['상품',d.products.length],['주문',d.orders.length]].map(x=><article className="rounded-2xl bg-white p-5" key={x[0]}><p className="text-xs text-slate-400">{x[0]}</p><b className="mt-3 block text-3xl">{x[1]}</b></article>)}</div><div className="grid gap-6 lg:grid-cols-2"><Chart title="주문 상태" data={data} type="bar"/><Chart title="주문·매출 추이" data={trend} type="line"/></div></div>}
-function Chart({title,data,type}){return <article className="rounded-2xl bg-white p-6"><h2 className="text-xl font-black">{title}</h2><div className="mt-6 h-72"><ResponsiveContainer width="100%" height="100%">{type==='bar'?<BarChart data={data}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name" tick={{fontSize:11}}/><YAxis allowDecimals={false}/><Tooltip/><Bar dataKey="orders" name="주문 건수" fill="#2563eb" radius={[6,6,0,0]}/></BarChart>:<LineChart data={data}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name" tick={{fontSize:11}}/><YAxis/><Tooltip/><Line dataKey="orders" name="주문" stroke="#0f172a" strokeWidth={3}/><Line dataKey="revenue" name="매출" stroke="#2563eb" strokeWidth={3}/></LineChart>}</ResponsiveContainer></div></article>}
-function Members({users}){return <Panel title="회원 관리"><table className="w-full text-left text-sm"><tbody>{users.map(u=><tr className="border-b" key={u.id}><td className="py-4 font-bold">{u.name}</td><td>{u.email}</td><td>{u.role}</td></tr>)}</tbody></table></Panel>}
-function Products({products,save,auth,setMsg}){const[editing,setEditing]=useState(null);return <div className="grid gap-6"><ProductForm product={editing} auth={auth} setMsg={setMsg} onDone={()=>{setEditing(null);location.reload()}}/><Panel title="상품 목록"><div className="grid gap-3">{products.map(p=><div className="flex items-center justify-between rounded-xl bg-slate-50 p-4" key={p.id}><div><b>{p.name}</b><p className="text-xs text-slate-500">{p.brand} · {won(p.price)} · {p.status}</p></div><Button variant="outline" size="sm" onClick={()=>setEditing(p)}>수정</Button></div>)}</div></Panel></div>}
-function ProductForm({product,auth,setMsg,onDone}){const[form,setForm]=useState({name:'',brand:'',category:'노트북',price:0,note:'',color:'',image:'',stock:0,status:'published'});const editor=useEditor({extensions:[StarterKit],content:product?.note||'',onUpdate:({editor})=>setForm(f=>({...f,note:editor.getHTML()}))},[product]);useEffect(()=>{if(product){setForm(product);editor?.commands.setContent(product.note||'')}},[product,editor]);async function submit(e){e.preventDefault();const r=await fetch(`${API}/products${product?`/${product.id}`:''}`,{method:product?'PATCH':'POST',headers:{'content-type':'application/json',...auth},body:JSON.stringify(form)});if(!r.ok){setMsg('상품 저장에 실패했습니다.');return}setMsg(product?'상품을 수정했습니다.':'상품을 등록했습니다.');onDone()}async function upload(e){const file=e.target.files?.[0];if(!file)return;const meta=await fetch(`${API}/media/upload-url`,{method:'POST',headers:{'content-type':'application/json',...auth},body:JSON.stringify({fileName:file.name,contentType:file.type})}).then(r=>r.json());await fetch(meta.uploadUrl,{method:'PUT',headers:{'content-type':file.type},body:file});setForm(f=>({...f,image:meta.publicUrl}));setMsg('이미지를 업로드했습니다.')}return <form onSubmit={submit} className="rounded-2xl bg-white p-6"><h2 className="text-xl font-black">{product?'상품 수정':'상품 등록'}</h2><div className="mt-5 grid gap-3 md:grid-cols-2"><input required placeholder="상품명" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="rounded-xl border p-3"/><input required placeholder="브랜드" value={form.brand} onChange={e=>setForm({...form,brand:e.target.value})} className="rounded-xl border p-3"/><input type="number" placeholder="가격" value={form.price} onChange={e=>setForm({...form,price:Number(e.target.value)})} className="rounded-xl border p-3"/><input type="number" placeholder="초기 재고" value={form.stock} onChange={e=>setForm({...form,stock:Number(e.target.value)})} className="rounded-xl border p-3"/><input placeholder="카테고리" value={form.category} onChange={e=>setForm({...form,category:e.target.value})} className="rounded-xl border p-3"/><label className="rounded-xl border p-3 text-sm">상품 이미지 <input type="file" accept="image/*" onChange={upload} className="mt-2 block text-xs"/></label></div><div className="mt-4 rounded-xl border"><div className="flex gap-2 border-b p-2"><Button type="button" size="sm" variant="outline" onClick={()=>editor?.chain().focus().toggleBold().run()}>굵게</Button><Button type="button" size="sm" variant="outline" onClick={()=>editor?.chain().focus().toggleBulletList().run()}>목록</Button></div><EditorContent editor={editor} className="min-h-32 p-4 prose prose-sm"/></div><Button className="mt-5" type="submit">{product?'수정 저장':'상품 등록'}</Button></form>}
-function Inventory({products,inventory,save}){return <Panel title="재고·물류 관리"><div className="grid gap-3 md:grid-cols-2">{products.map(p=>{const i=inventory.find(x=>x.product_id===p.id);return <div className="flex justify-between rounded-xl bg-slate-950 p-4 text-white" key={p.id}><span>{p.name}</span><span>{i?.available_qty??p.stock}개</span></div>})}</div></Panel>}
-function Orders({orders,save}){return <Panel title="주문·배송 관리"><div className="grid gap-3">{orders.map(o=><div className="flex justify-between rounded-xl bg-slate-50 p-4" key={o.id}><span>{o.order_number} · {o.recipient}</span><select value={o.status} onChange={e=>save(`orders/${o.id}/status`,{status:e.target.value})}>{states.map(s=><option key={s}>{s}</option>)}</select></div>)}</div></Panel>}
-function Reviews({reviews,save}){return <Panel title="리뷰 관리">{reviews.length?reviews.map(r=><div key={r.id} className="mb-3 rounded-xl bg-slate-50 p-4">★{r.rating} {r.body}</div>):<p>등록된 리뷰가 없습니다.</p>}</Panel>};function Panel({title,children}){return <section className="rounded-2xl bg-white p-6"><h2 className="text-xl font-black">{title}</h2><div className="mt-5">{children}</div></section>}
+
+const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:18080/api';
+const orderStatusLabels = {
+  pending: '결제 대기',
+  confirmed: '주문 확정',
+  preparing: '상품 준비',
+  shipped: '배송 중',
+  delivered: '배송 완료',
+  cancelled: '주문 취소',
+};
+const won = value => `${new Intl.NumberFormat('ko-KR').format(value || 0)}원`;
+
+export default function AdminPage() {
+  const [session, setSession] = useState(undefined);
+  const [data, setData] = useState({ products: [], inventory: [], orders: [], users: [], reviews: [] });
+  const [state, setState] = useState({ loading: true, error: '' });
+  const token = session?.accessToken || session?.token;
+
+  async function load() {
+    if (!token) return;
+    setState({ loading: true, error: '' });
+    try {
+      const headers = { authorization: `Bearer ${token}` };
+      const paths = ['products?status=all', 'inventory', 'orders', 'auth/users', 'reviews'];
+      const responses = await Promise.all(paths.map(path => fetch(`${API}/${path}`, { headers })));
+      if (responses.some(response => response.status === 401 || response.status === 403)) throw new Error('관리자 권한이 필요합니다.');
+      if (responses.some(response => !response.ok)) throw new Error('대시보드 데이터를 불러오지 못했습니다.');
+      const payloads = await Promise.all(responses.map(response => response.json()));
+      setData({ products: payloads[0].items || [], inventory: payloads[1].items || [], orders: payloads[2].items || [], users: payloads[3].items || [], reviews: payloads[4].items || [] });
+      setState({ loading: false, error: '' });
+    } catch (error) {
+      setState({ loading: false, error: error.message });
+    }
+  }
+
+  useEffect(() => setSession(readSession()), []);
+  useEffect(() => { if (token) load(); }, [token]);
+
+  if (session !== undefined && session?.user?.role !== 'admin') {
+    return <main className="grid min-h-screen place-items-center bg-slate-100"><div className="rounded-3xl bg-white p-10 text-center"><h1 className="text-2xl font-black">관리자 로그인이 필요합니다.</h1><a className="mt-6 inline-block rounded-xl bg-slate-950 px-5 py-3 text-white" href="/login/">로그인</a></div></main>;
+  }
+
+  return <main className="min-h-screen bg-slate-100 p-5 text-slate-950 md:p-10">
+    <div className="mx-auto max-w-7xl">
+      <header className="flex items-center justify-between"><div><p className="text-xs font-bold tracking-[.2em] text-indigo-600">TECHZONE CMS</p><h1 className="mt-2 text-4xl font-black tracking-[-.06em]">운영 대시보드</h1></div><Button variant="outline" onClick={load}><RefreshCw size={15} className="mr-2"/>새로고침</Button></header>
+      {state.error && <p role="alert" className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-700">{state.error}</p>}
+      {state.loading ? <p className="mt-8 rounded-2xl bg-white p-8 text-sm">데이터를 불러오는 중입니다.</p> : <Dashboard data={data} />}
+    </div>
+  </main>;
+}
+
+function Dashboard({ data }) {
+  const statusData = Object.entries(orderStatusLabels).map(([status, name]) => ({ name, orders: data.orders.filter(order => order.status === status).length }));
+  const trendData = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() - (6 - index)); return date; });
+    return days.map(date => {
+      const key = date.toISOString().slice(0, 10);
+      const orders = data.orders.filter(order => String(order.created_at || order.createdAt || '').slice(0, 10) === key);
+      return { name: date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }), orders: orders.length, revenue: orders.reduce((sum, order) => sum + Number(order.total_amount || order.totalAmount || 0), 0) };
+    });
+  }, [data.orders]);
+  const lowStock = data.inventory.filter(item => Number(item.available_qty) < 5).length;
+  const cards = [['총 매출', won(data.orders.reduce((sum, order) => sum + Number(order.total_amount || 0), 0))], ['회원', data.users.length], ['상품', data.products.length], ['주의 재고', lowStock]];
+  return <section className="mt-8 grid gap-6"><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{cards.map(([label, value]) => <article className="rounded-2xl bg-white p-5 shadow-sm" key={label}><p className="text-xs font-bold text-slate-400">{label}</p><b className="mt-3 block text-3xl tracking-[-.05em]">{value}</b></article>)}</div><div className="grid gap-6 lg:grid-cols-2"><Chart title="주문 상태" data={statusData} type="bar"/><Chart title="최근 7일 주문·매출" data={trendData} type="line"/></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><QuickLink href="/admin/products/manage/" label="상품 관리"/><QuickLink href="/admin/inventory/" label="재고 관리"/><QuickLink href="/admin/orders/" label="주문 관리"/><QuickLink href="/admin/reviews/" label="리뷰 관리"/></div></section>;
+}
+
+function Chart({ title, data, type }) {
+  return <article className="rounded-2xl bg-white p-6 shadow-sm"><h2 className="text-xl font-black">{title}</h2><div className="mt-6 h-72"><ResponsiveContainer width="100%" height="100%">{type === 'bar' ? <BarChart data={data}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name" tick={{ fontSize: 11 }}/><YAxis allowDecimals={false}/><Tooltip formatter={value => [value, '주문 건수']}/><Bar dataKey="orders" name="주문 건수" fill="#4f46e5" radius={[6, 6, 0, 0]}/></BarChart> : <LineChart data={data}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name" tick={{ fontSize: 11 }}/><YAxis yAxisId="orders" allowDecimals={false}/><YAxis yAxisId="revenue" orientation="right" tickFormatter={value => `${Math.round(value / 10000)}만`}/><Tooltip formatter={(value, name) => [name === '매출' ? won(value) : value, name]}/><Line yAxisId="orders" dataKey="orders" name="주문" stroke="#0f172a" strokeWidth={3}/><Line yAxisId="revenue" dataKey="revenue" name="매출" stroke="#4f46e5" strokeWidth={3}/></LineChart>}</ResponsiveContainer></div></article>;
+}
+
+function QuickLink({ href, label }) { return <a href={href} className="flex items-center justify-between rounded-2xl bg-white p-5 text-sm font-bold shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">{label}<ArrowRight size={16} className="text-indigo-600"/></a>; }

@@ -4,6 +4,7 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { database } = require('../../shared/db');
 const { mediaAssets } = require('../../shared/schema');
 const { server, listen } = require('../../shared/http');
+const { requireAuth, requireRole } = require('../../shared/auth');
 
 const db = database('media');
 const app = server('media');
@@ -17,8 +18,9 @@ async function init() {
   if (s3) { try { await s3.send(new CreateBucketCommand({ Bucket: bucket })); } catch (error) { if (!['BucketAlreadyOwnedByYou', 'BucketAlreadyExists'].includes(error.name)) console.warn('S3 bucket setup:', error.message); } }
 }
 
-app.post('/media/upload-url', async (req, res) => {
-  const { ownerId, contentType = 'image/jpeg', fileName = 'asset.jpg' } = req.body || {};
+app.post('/media/upload-url', requireAuth, requireRole('admin'), async (req, res) => {
+  const { contentType = 'image/jpeg', fileName = 'asset.jpg' } = req.body || {};
+  const ownerId = req.user.sub;
   const id = crypto.randomUUID();
   const safeName = String(fileName).replace(/[^a-zA-Z0-9._-]/g, '-');
   const objectKey = `uploads/${ownerId || 'anonymous'}/${id}-${safeName}`;
