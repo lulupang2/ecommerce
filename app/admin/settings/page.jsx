@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { KeyRound, RefreshCw, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { readSession } from '@/lib/session';
+import { authHeaders, readSession } from '@/lib/session';
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:18080/api';
 
@@ -12,10 +12,10 @@ export default function AdminSettingsPage() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   async function load() {
-    const session = readSession(); const token = session?.accessToken || session?.token; const headers = { authorization: `Bearer ${token}` };
+    readSession(); const headers = authHeaders();
     setLoading(true);
     try {
-      const [rolesResponse, usersResponse] = await Promise.all([fetch(`${API}/admin/roles`, { headers }), fetch(`${API}/auth/users`, { headers })]);
+      const [rolesResponse, usersResponse] = await Promise.all([fetch(`${API}/admin/roles`, { credentials: 'include', headers }), fetch(`${API}/auth/users`, { credentials: 'include', headers })]);
       if (!rolesResponse.ok || !usersResponse.ok) throw new Error('권한 정보를 불러오지 못했습니다.');
       setData({ roles: (await rolesResponse.json()).items || [], users: (await usersResponse.json()).items || [] });
       setMessage('');
@@ -23,8 +23,7 @@ export default function AdminSettingsPage() {
   }
   useEffect(() => { load(); }, []);
   async function changeRole(userId, role) {
-    const session = readSession(); const token = session?.accessToken || session?.token;
-    const response = await fetch(`${API}/auth/users/${userId}/role`, { method: 'PATCH', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ role }) });
+    const response = await fetch(`${API}/auth/users/${userId}/role`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json', ...authHeaders({ mutation: true }) }, body: JSON.stringify({ role }) });
     const payload = await response.json();
     if (!response.ok) return setMessage(payload.code || '역할 변경에 실패했습니다.');
     setMessage('관리자 역할을 변경했습니다. 다음 로그인부터 새 권한이 적용됩니다.');

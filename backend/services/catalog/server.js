@@ -1,11 +1,18 @@
 const { database } = require('../../shared/db');
 const { server, listen } = require('../../shared/http');
-const { publish } = require('../../shared/bus');
+const { publish, registerReliability } = require('../../shared/bus');
 const { requireAuth, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
+const sanitizeHtml = require('sanitize-html');
 
 const db = database('catalog');
 const app = server('catalog');
 const internalHeaders = () => ({ 'x-internal-key': process.env.INTERNAL_API_KEY || 'techzone-internal' });
+const cleanRichText = value => sanitizeHtml(String(value || ''), {
+  allowedTags: ['p', 'br', 'strong', 'em', 'u', 's', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'blockquote', 'a', 'img'],
+  allowedAttributes: { a: ['href', 'target', 'rel'], img: ['src', 'alt', 'width', 'height'] },
+  allowedSchemes: ['http', 'https'],
+  transformTags: { a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer' }, true) },
+});
 const seed = [
   ['nova-book-air-14','NOVA Book Air 14','NOVA','노트북',1499000,1080000,'NOVA-BA14','BA14-2026','하루 종일 이어지는 배터리와 선명한 2.8K 디스플레이.','스페이스 그레이','https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=1400&q=88',12],
   ['orbit-pro-x','Orbit Pro X','ORBIT','스마트폰',1199000,830000,'ORBIT-PX','OPX-256','손 안의 강력한 퍼포먼스. 50MP 트리플 카메라.','미드나이트','https://images.unsplash.com/photo-1592899677977-9c10ca588bbd?auto=format&fit=crop&w=1400&q=88',18],
@@ -19,6 +26,7 @@ const seed = [
 
 async function init() {
   await db.wait();
+  await registerReliability('catalog', db);
   await db.query(`DO $$ BEGIN CREATE TYPE product_status AS ENUM ('draft','published','hidden','archived'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
   await db.query(`CREATE TABLE IF NOT EXISTS brands(id UUID PRIMARY KEY,name TEXT UNIQUE NOT NULL,slug TEXT UNIQUE NOT NULL,status TEXT NOT NULL DEFAULT 'active')`);
   await db.query(`CREATE TABLE IF NOT EXISTS categories(id UUID PRIMARY KEY,parent_id UUID,name TEXT NOT NULL,slug TEXT UNIQUE NOT NULL,display_order INTEGER NOT NULL DEFAULT 0)`);
@@ -82,7 +90,7 @@ async function seedContent() {
 function categorySlug(value){ return ({노트북:'laptop',스마트폰:'smartphone',오디오:'audio',게이밍:'gaming',스마트홈:'smart-home',웨어러블:'wearable',액세서리:'accessory'})[value] || value.toLowerCase(); }
 function hashCode(value){ return [...value].reduce((hash,ch)=>((hash<<5)-hash)+ch.charCodeAt(0),0); }
 function productSelect(){ return `SELECT p.*,v.id variant_id,v.sku,v.model_number,v.list_price,v.sale_price,v.option_values,round((v.list_price-v.sale_price)*100.0/NULLIF(v.list_price,0))::int discount_rate FROM products p LEFT JOIN LATERAL(SELECT * FROM product_variants WHERE product_id=p.id AND status='active' ORDER BY sale_price LIMIT 1)v ON true`; }
-function responseProduct(row){ return {id:row.id,slug:row.slug,name:row.name,brand:row.brand,category:row.category,price:Number(row.sale_price??row.price),listPrice:Number(row.list_price??row.price),discountRate:Number(row.discount_rate||0),note:row.note,color:row.color,image:row.image,stock:Number(row.stock),status:row.status,variantId:row.variant_id,sku:row.sku,modelNumber:row.model_number,optionValues:row.option_values,createdAt:row.created_at}; }
+function responseProduct(row){ return {id:row.id,slug:row.slug,name:row.name,brand:row.brand,category:row.category,price:Number(row.sale_price??row.price),listPrice:Number(row.list_price??row.price),discountRate:Number(row.discount_rate||0),note:cleanRichText(row.note),color:row.color,image:row.image,stock:Number(row.stock),status:row.status,variantId:row.variant_id,sku:row.sku,modelNumber:row.model_number,optionValues:row.option_values,createdAt:row.created_at}; }
 
 app.get('/storefront/home', async (_,res)=>{
   const sections=(await db.query(`SELECT * FROM storefront_sections WHERE status='published' AND (starts_at IS NULL OR starts_at<=now()) AND (ends_at IS NULL OR ends_at>=now()) ORDER BY display_order`)).rows;
@@ -168,11 +176,11 @@ app.patch('/storefront/admin/sections/:id',requireAuth,requireRole('admin'),requ
 app.post('/products',requireAuth,requireRole('admin'),requirePermission('products.update'),async(req,res)=>{
   const p=req.body;if(!p.name||!p.brand||!p.category||!Number.isInteger(Number(p.price)))return res.status(400).json({code:'INVALID_PRODUCT'});
   const id=crypto.randomUUID(),variantId=crypto.randomUUID(),sku=p.sku||`TZ-${Date.now().toString().slice(-8)}`,slug=p.slug||sku.toLowerCase();
-  await db.query(`INSERT INTO products(id,slug,name,brand,category,price,note,color,image,stock,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,[id,slug,p.name,p.brand,p.category,Number(p.price),p.note,p.color,p.image,Number(p.stock||0),p.status||'draft']);
+  await db.query(`INSERT INTO products(id,slug,name,brand,category,price,note,color,image,stock,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,[id,slug,p.name,p.brand,p.category,Number(p.price),cleanRichText(p.note),p.color,p.image,Number(p.stock||0),p.status||'draft']);
   await db.query(`INSERT INTO product_variants(id,product_id,sku,model_number,barcode,option_values,list_price,sale_price,cost_price,weight_gram) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[variantId,id,sku,p.modelNumber||sku,p.barcode||null,JSON.stringify(p.optionValues||{color:p.color}),Number(p.listPrice||p.price),Number(p.price),Number(p.costPrice||0),Number(p.weightGram||0)]);
   await publish('product.created',{productId:id,variantId,sku,name:p.name,brand:p.brand,category:p.category,price:Number(p.price),costPrice:Number(p.costPrice||0),stock:Number(p.stock||0),status:p.status||'draft',image:p.image,actorId:req.user.sub});res.status(201).json({id,variantId,slug,sku});
 });
-app.patch('/products/:id',requireAuth,requireRole('admin'),requirePermission('products.update'),async(req,res)=>{const p=req.body;const result=await db.query(`UPDATE products SET name=COALESCE($2,name),brand=COALESCE($3,brand),category=COALESCE($4,category),price=COALESCE($5,price),note=COALESCE($6,note),color=COALESCE($7,color),image=COALESCE($8,image),stock=COALESCE($9,stock),status=COALESCE($10,status),updated_at=now() WHERE id=$1 RETURNING *`,[req.params.id,p.name||null,p.brand||null,p.category||null,p.price===undefined?null:Number(p.price),p.note||null,p.color||null,p.image||null,p.stock===undefined?null:Number(p.stock),p.status||null]);if(!result.rows[0])return res.status(404).json({code:'NOT_FOUND'});await publish('product.updated',{productId:req.params.id,...result.rows[0],actorId:req.user.sub});res.json(result.rows[0]);});
+app.patch('/products/:id',requireAuth,requireRole('admin'),requirePermission('products.update'),async(req,res)=>{const p=req.body;const result=await db.query(`UPDATE products SET name=COALESCE($2,name),brand=COALESCE($3,brand),category=COALESCE($4,category),price=COALESCE($5,price),note=COALESCE($6,note),color=COALESCE($7,color),image=COALESCE($8,image),stock=COALESCE($9,stock),status=COALESCE($10,status),updated_at=now() WHERE id=$1 RETURNING *`,[req.params.id,p.name||null,p.brand||null,p.category||null,p.price===undefined?null:Number(p.price),p.note===undefined?null:cleanRichText(p.note),p.color||null,p.image||null,p.stock===undefined?null:Number(p.stock),p.status||null]);if(!result.rows[0])return res.status(404).json({code:'NOT_FOUND'});await publish('product.updated',{productId:req.params.id,...result.rows[0],actorId:req.user.sub});res.json({...result.rows[0],note:cleanRichText(result.rows[0].note)});});
 app.get('/reviews',requireAuth,requireRole('admin'),async(_,res)=>{const rows=await db.query(`SELECT id,product_id,user_name,rating,body,status,created_at FROM reviews ORDER BY created_at DESC`);res.json({items:rows.rows});});
 app.patch('/reviews/:id',requireAuth,requireRole('admin'),requirePermission('reviews.update'),async(req,res)=>{const result=await db.query(`UPDATE reviews SET status=$1 WHERE id=$2 RETURNING id,status`,[req.body.status,req.params.id]);res.json(result.rows[0]);});
 app.get('/internal/products',requireInternal,async(_,res)=>{const result=await db.query(`${productSelect()} ORDER BY p.created_at DESC`);res.json({items:result.rows.map(row=>({...responseProduct(row),variant_id:row.variant_id,model_number:row.model_number,cost_price:row.cost_price,created_at:row.created_at}))});});

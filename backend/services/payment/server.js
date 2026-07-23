@@ -2,14 +2,18 @@ const { eq } = require('drizzle-orm');
 const { database } = require('../../shared/db');
 const { payments } = require('../../shared/schema');
 const { server, listen } = require('../../shared/http');
-const { publish, subscribe } = require('../../shared/bus');
+const { publish, subscribe, registerReliability } = require('../../shared/bus');
 const { requireAuth, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
+const { idempotency } = require('../../platform/idempotency');
+const { validateDto } = require('../../platform/validation');
+const { PaymentConfirmDto, RefundDto } = require('../../contracts/dtos');
 
 const db = database('payments');
 const app = server('payment');
 
 async function init() {
   await db.wait();
+  await registerReliability('payment', db);
   await db.query(`DO $$ BEGIN CREATE TYPE payment_status AS ENUM ('pending','approved','partially_refunded','refunded','cancelled','failed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
   await db.query(`CREATE TABLE IF NOT EXISTS payments(id UUID PRIMARY KEY,order_id UUID UNIQUE NOT NULL,status payment_status NOT NULL,amount INTEGER NOT NULL CHECK(amount>=0),refunded_amount INTEGER NOT NULL DEFAULT 0 CHECK(refunded_amount>=0),provider TEXT NOT NULL,payment_key TEXT,approved_at TIMESTAMPTZ)`);
   await db.query(`CREATE TABLE IF NOT EXISTS payment_transactions(id UUID PRIMARY KEY,payment_id UUID NOT NULL,order_id UUID NOT NULL,type TEXT NOT NULL,status TEXT NOT NULL,amount INTEGER NOT NULL CHECK(amount>=0),reason TEXT,created_at TIMESTAMPTZ DEFAULT now())`);
@@ -19,13 +23,23 @@ async function approve(payload, provider, paymentKey) {
   const existing = await db.query(`SELECT * FROM payments WHERE order_id=$1`, [payload.orderId]);
   if (existing.rows[0]?.status === 'approved') return existing.rows[0];
   const paymentId = existing.rows[0]?.id || crypto.randomUUID();
-  await db.query(`INSERT INTO payments(id,order_id,status,amount,provider,payment_key,approved_at) VALUES($1,$2,'approved',$3,$4,$5,now()) ON CONFLICT(order_id) DO UPDATE SET status='approved',amount=EXCLUDED.amount,provider=EXCLUDED.provider,payment_key=EXCLUDED.payment_key,approved_at=now()`, [paymentId, payload.orderId, Number(payload.totalAmount), provider, paymentKey]);
-  await db.query(`INSERT INTO payment_transactions(id,payment_id,order_id,type,status,amount) VALUES($1,$2,$3,'approval','completed',$4)`, [crypto.randomUUID(), paymentId, payload.orderId, Number(payload.totalAmount)]);
-  await publish('payment.approved', { ...payload, paymentId, provider });
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`INSERT INTO payments(id,order_id,status,amount,provider,payment_key,approved_at) VALUES($1,$2,'approved',$3,$4,$5,now()) ON CONFLICT(order_id) DO UPDATE SET status='approved',amount=EXCLUDED.amount,provider=EXCLUDED.provider,payment_key=EXCLUDED.payment_key,approved_at=now()`, [paymentId, payload.orderId, Number(payload.totalAmount), provider, paymentKey]);
+    await client.query(`INSERT INTO payment_transactions(id,payment_id,order_id,type,status,amount) VALUES($1,$2,$3,'approval','completed',$4)`, [crypto.randomUUID(), paymentId, payload.orderId, Number(payload.totalAmount)]);
+    await publish('payment.approved', { ...payload, paymentId, provider }, { client });
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
   return { id: paymentId, status: 'approved' };
 }
 
-app.post('/payments/confirm', async (req, res) => {
+app.post('/payments/confirm', validateDto(PaymentConfirmDto), idempotency(db, 'payment.confirm'), async (req, res) => {
   const { paymentKey, orderId, amount, order } = req.body || {};
   if (!orderId || !Number.isInteger(Number(amount)) || Number(amount) < 0) return res.status(400).json({ code: 'INVALID_PAYMENT' });
   try {
@@ -41,7 +55,7 @@ app.post('/payments/confirm', async (req, res) => {
     res.json({ status: 'approved', provider: 'toss', orderId, paymentKey });
   } catch (error) { res.status(502).json({ code: 'PAYMENT_PROVIDER_ERROR', message: error.message }); }
 });
-app.post('/payments/:orderId/refunds', requireAuth, requireRole('admin'), requirePermission('payments.refund'), async (req, res) => {
+app.post('/payments/:orderId/refunds', requireAuth, requireRole('admin'), requirePermission('payments.refund'), validateDto(RefundDto), idempotency(db, 'payment.refund'), async (req, res) => {
   const payment = await db.query(`SELECT * FROM payments WHERE order_id=$1`, [req.params.orderId]);
   if (!payment.rows[0]) return res.status(404).json({ code: 'NOT_FOUND' });
   const amount = Number(req.body.amount);

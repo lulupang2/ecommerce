@@ -1,15 +1,19 @@
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const crypto = require('node:crypto');
 const { eq, asc } = require('drizzle-orm');
 const { database } = require('../../shared/db');
 const { users } = require('../../shared/schema');
 const { server, listen } = require('../../shared/http');
-const { publish } = require('../../shared/bus');
-const { requireAuth, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
+const { publish, registerReliability } = require('../../shared/bus');
+const { requireAuth, requireCsrf, requireCookieCsrf, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
+const { publicJwks, signAccessToken, accessCookieOptions, refreshCookieOptions } = require('../../platform/tokens');
+const { hit, clear } = require('../../platform/rate-limit');
+const { validateDto } = require('../../platform/validation');
+const { LoginDto, RefreshDto, RegisterDto } = require('../../contracts/dtos');
 
 const db = database('auth');
 const app = server('auth');
-const secret = process.env.JWT_SECRET || 'canvas-dev-secret';
+const refreshDays = 14;
 const adminRoles = [
   ['super_admin', '슈퍼관리자', '모든 관리자 기능'],
   ['cs', 'CS 담당자', '회원·주문·반품 관리'],
@@ -28,11 +32,14 @@ const permissionSeeds = [
 
 async function init() {
   await db.wait();
+  await registerReliability('auth', db);
   await db.query(`CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,name TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'customer',phone TEXT,status TEXT NOT NULL DEFAULT 'active',created_at TIMESTAMPTZ DEFAULT now(),updated_at TIMESTAMPTZ DEFAULT now())`);
   await db.query(`CREATE TABLE IF NOT EXISTS roles (id UUID PRIMARY KEY,code TEXT UNIQUE NOT NULL,name TEXT NOT NULL,description TEXT)`);
   await db.query(`CREATE TABLE IF NOT EXISTS permissions (id UUID PRIMARY KEY,code TEXT UNIQUE NOT NULL,name TEXT NOT NULL)`);
   await db.query(`CREATE TABLE IF NOT EXISTS user_roles (user_id UUID NOT NULL,role_id UUID NOT NULL,PRIMARY KEY(user_id,role_id))`);
   await db.query(`CREATE TABLE IF NOT EXISTS role_permissions (role_id UUID NOT NULL,permission_id UUID NOT NULL,PRIMARY KEY(role_id,permission_id))`);
+  await db.query(`CREATE TABLE IF NOT EXISTS refresh_sessions(id UUID PRIMARY KEY,user_id UUID NOT NULL,family_id UUID NOT NULL,token_hash TEXT UNIQUE NOT NULL,client_type TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,revoked_at TIMESTAMPTZ,replaced_by UUID,ip_address TEXT,user_agent TEXT,created_at TIMESTAMPTZ DEFAULT now())`);
+  await db.query(`CREATE INDEX IF NOT EXISTS refresh_sessions_family_idx ON refresh_sessions(family_id)`);
   for (const [code, name, description] of adminRoles) await db.query(`INSERT INTO roles(id,code,name,description) VALUES($1,$2,$3,$4) ON CONFLICT(code) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description`, [crypto.randomUUID(), code, name, description]);
   for (const [code, name] of permissionSeeds) await db.query(`INSERT INTO permissions(id,code,name) VALUES($1,$2,$3) ON CONFLICT(code) DO UPDATE SET name=EXCLUDED.name`, [crypto.randomUUID(), code, name]);
   await seedRolePermissions();
@@ -66,26 +73,97 @@ async function adminRoleFor(userId) {
   const result = await db.query(`SELECT r.code,r.name,array_remove(array_agg(p.code),NULL) permissions FROM user_roles ur JOIN roles r ON r.id=ur.role_id LEFT JOIN role_permissions rp ON rp.role_id=r.id LEFT JOIN permissions p ON p.id=rp.permission_id WHERE ur.user_id=$1 GROUP BY r.code,r.name LIMIT 1`, [userId]);
   return result.rows[0] || null;
 }
-function token(user, adminRole) { return jwt.sign({ sub: user.id, email: user.email, role: user.role, adminRole: adminRole?.code, permissions: adminRole?.permissions || [] }, secret, { expiresIn: '2h' }); }
+function token(user, adminRole) { return signAccessToken({ sub: user.id, email: user.email, role: user.role, adminRole: adminRole?.code, permissions: adminRole?.permissions || [] }); }
+const hashToken = value => crypto.createHash('sha256').update(value).digest('hex');
+const publicUser = (user, adminRole) => ({ id: user.id, email: user.email, name: user.name, role: user.role, adminRole: adminRole?.code || null, permissions: adminRole?.permissions || [] });
 
-app.post('/auth/register', async (req, res) => {
+async function issueSession(user, adminRole, req, res, familyId = crypto.randomUUID(), client = null) {
+  const accessToken = token(user, adminRole);
+  const refreshToken = crypto.randomBytes(48).toString('base64url');
+  const refreshId = crypto.randomUUID();
+  const clientType = req.headers['x-client-platform'] === 'capacitor' ? 'capacitor' : 'web';
+  const query = client ? client.query.bind(client) : db.query;
+  await query(`INSERT INTO refresh_sessions(id,user_id,family_id,token_hash,client_type,expires_at,ip_address,user_agent) VALUES($1,$2,$3,$4,$5,now()+($6||' days')::interval,$7,$8)`, [refreshId, user.id, familyId, hashToken(refreshToken), clientType, String(refreshDays), req.ip, String(req.headers['user-agent'] || '').slice(0, 500)]);
+  const csrfToken = crypto.randomBytes(24).toString('base64url');
+  if (clientType === 'web') {
+    res.cookie('tz_access', accessToken, accessCookieOptions());
+    res.cookie('tz_refresh', refreshToken, refreshCookieOptions());
+    res.cookie('tz_csrf', csrfToken, { secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/', maxAge: refreshDays * 24 * 60 * 60_000 });
+  }
+  return { accessToken, ...(clientType === 'capacitor' ? { refreshToken } : {}), csrfToken, refreshId, familyId };
+}
+
+app.post('/auth/register', validateDto(RegisterDto), async (req, res) => {
   const { email, password, name, phone } = req.body;
   if (!email || !password || password.length < 8 || !name) return res.status(400).json({ code: 'INVALID_INPUT' });
   try {
     const user = { id: crypto.randomUUID(), email, name, role: 'customer' };
     await db.orm.insert(users).values({ id: user.id, email, passwordHash: await bcrypt.hash(password, 10), name, phone, role: 'customer', status: 'active' });
     await publish('user.registered', { userId: user.id, email, role: 'customer', name });
-    res.status(201).json({ user, accessToken: token(user, null) });
+    const session = await issueSession(user, null, req, res);
+    res.status(201).json({ user, ...session });
   } catch { res.status(409).json({ code: 'EMAIL_EXISTS' }); }
 });
-app.post('/auth/login', async (req, res) => {
+app.post('/auth/login', validateDto(LoginDto), async (req, res) => {
+  const loginKey = `auth:login:${String(req.body.email || '').toLowerCase()}:${req.ip}`;
+  const attempt = await hit(loginKey, { limit: 5, windowSeconds: 15 * 60, lockSeconds: 15 * 60 });
+  if (!attempt.allowed) return res.status(429).set('Retry-After', String(attempt.retryAfter)).json({ code: 'LOGIN_LOCKED', message: '로그인 시도가 너무 많습니다.', retryAfter: attempt.retryAfter });
   const rows = await db.orm.select().from(users).where(eq(users.email, req.body.email)).limit(1);
   const user = rows[0];
   if (!user || user.status !== 'active' || !(await bcrypt.compare(req.body.password || '', user.passwordHash))) return res.status(401).json({ code: 'INVALID_CREDENTIALS' });
+  await clear(loginKey);
   const adminRole = await adminRoleFor(user.id);
-  const publicUser = { id: user.id, email: user.email, name: user.name, role: user.role, adminRole: adminRole?.code || null, permissions: adminRole?.permissions || [] };
-  res.json({ user: publicUser, accessToken: token(user, adminRole) });
+  const session = await issueSession(user, adminRole, req, res);
+  res.json({ user: publicUser(user, adminRole), ...session });
 });
+app.post('/auth/refresh', requireCookieCsrf, validateDto(RefreshDto), async (req, res) => {
+  const rawToken = req.body?.refreshToken || req.cookies?.tz_refresh;
+  if (!rawToken) return res.status(401).json({ code: 'REFRESH_TOKEN_REQUIRED' });
+  const result = await db.query(`SELECT s.*,u.email,u.name,u.role,u.status FROM refresh_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1`, [hashToken(rawToken)]);
+  const current = result.rows[0];
+  if (!current || current.expires_at <= new Date() || current.status !== 'active') return res.status(401).json({ code: 'REFRESH_TOKEN_INVALID' });
+  if (current.revoked_at) {
+    await db.query(`UPDATE refresh_sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE family_id=$1`, [current.family_id]);
+    return res.status(401).json({ code: 'REFRESH_TOKEN_REUSED' });
+  }
+  const user = { id: current.user_id, email: current.email, name: current.name, role: current.role };
+  const adminRole = await adminRoleFor(user.id);
+  const client = await db.pool.connect();
+  let session;
+  try {
+    await client.query('BEGIN');
+    const locked = await client.query(`SELECT revoked_at FROM refresh_sessions WHERE id=$1 FOR UPDATE`, [current.id]);
+    if (locked.rows[0]?.revoked_at) {
+      await client.query(`UPDATE refresh_sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE family_id=$1`, [current.family_id]);
+      await client.query('COMMIT');
+      return res.status(401).json({ code: 'REFRESH_TOKEN_REUSED' });
+    }
+    session = await issueSession(user, adminRole, req, res, current.family_id, client);
+    await client.query(`UPDATE refresh_sessions SET revoked_at=now(),replaced_by=$2 WHERE id=$1`, [current.id, session.refreshId]);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+  res.json({ user: publicUser(user, adminRole), ...session });
+});
+app.post('/auth/logout', requireCookieCsrf, validateDto(RefreshDto), async (req, res) => {
+  const rawToken = req.body?.refreshToken || req.cookies?.tz_refresh;
+  if (rawToken) await db.query(`UPDATE refresh_sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE token_hash=$1`, [hashToken(rawToken)]);
+  res.clearCookie('tz_access', accessCookieOptions());
+  res.clearCookie('tz_refresh', refreshCookieOptions());
+  res.clearCookie('tz_csrf', { path: '/' });
+  res.status(204).end();
+});
+app.get('/auth/session', requireAuth, async (req, res) => {
+  const rows = await db.orm.select().from(users).where(eq(users.id, req.user.sub)).limit(1);
+  if (!rows[0]) return res.status(404).json({ code: 'NOT_FOUND' });
+  const adminRole = await adminRoleFor(rows[0].id);
+  res.json({ user: publicUser(rows[0], adminRole), csrfToken: req.cookies?.tz_csrf || null });
+});
+app.get('/.well-known/jwks.json', (_, res) => res.json(publicJwks()));
 app.get('/auth/me', requireAuth, async (req, res) => {
   const rows = await db.orm.select({ id: users.id, email: users.email, name: users.name, role: users.role, status: users.status }).from(users).where(eq(users.id, req.user.sub)).limit(1);
   if (!rows[0]) return res.status(404).json({ code: 'NOT_FOUND' });
@@ -100,7 +178,7 @@ app.get('/auth/roles', requireAuth, requireRole('admin'), async (_, res) => {
   const result = await db.query(`SELECT r.id,r.code,r.name,r.description,array_remove(array_agg(p.code ORDER BY p.code),NULL) permissions FROM roles r LEFT JOIN role_permissions rp ON rp.role_id=r.id LEFT JOIN permissions p ON p.id=rp.permission_id GROUP BY r.id ORDER BY r.name`);
   res.json({ items: result.rows });
 });
-app.patch('/auth/users/:id/role', requireAuth, requireRole('admin'), requirePermission('admin.manage'), async (req, res) => {
+app.patch('/auth/users/:id/role', requireAuth, requireCsrf, requireRole('admin'), requirePermission('admin.manage'), async (req, res) => {
   const role = await db.query(`SELECT id,code FROM roles WHERE code=$1`, [req.body.role]);
   if (!role.rows[0]) return res.status(400).json({ code: 'INVALID_ROLE' });
   const client = await db.pool.connect();
@@ -122,6 +200,10 @@ app.patch('/auth/users/:id/role', requireAuth, requireRole('admin'), requirePerm
 app.get('/internal/users', requireInternal, async (_, res) => {
   const rows = await db.orm.select({ id: users.id, email: users.email, name: users.name, role: users.role, status: users.status, createdAt: users.createdAt }).from(users).orderBy(asc(users.createdAt));
   res.json({ items: rows });
+});
+app.get('/internal/users/:id/exists', requireInternal, async (req, res) => {
+  const rows = await db.query(`SELECT EXISTS(SELECT 1 FROM users WHERE id=$1) exists`, [req.params.id]);
+  res.json({ exists: rows.rows[0].exists });
 });
 
 init().then(() => listen(app, 'auth')).catch(error => { console.error(error); process.exitCode = 1; });

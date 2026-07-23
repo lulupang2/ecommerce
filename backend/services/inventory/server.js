@@ -2,8 +2,11 @@ const { eq, gte, and, sql } = require('drizzle-orm');
 const { database } = require('../../shared/db');
 const { stock } = require('../../shared/schema');
 const { server, listen } = require('../../shared/http');
-const { publish, subscribe } = require('../../shared/bus');
+const { publish, subscribe, registerReliability } = require('../../shared/bus');
 const { requireAuth, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
+const { idempotency } = require('../../platform/idempotency');
+const { validateDto } = require('../../platform/validation');
+const { InventoryAdjustmentDto } = require('../../contracts/dtos');
 
 const db = database('inventory');
 const app = server('inventory');
@@ -12,6 +15,7 @@ let returnWarehouseId;
 
 async function init() {
   await db.wait();
+  await registerReliability('inventory', db);
   await db.query(`CREATE TABLE IF NOT EXISTS stock(product_id UUID PRIMARY KEY,available_qty INTEGER NOT NULL DEFAULT 0 CHECK(available_qty>=0),version INTEGER NOT NULL DEFAULT 0)`);
   await db.query(`CREATE TABLE IF NOT EXISTS warehouses(id UUID PRIMARY KEY,code TEXT UNIQUE NOT NULL,name TEXT NOT NULL,type TEXT NOT NULL,address TEXT,active BOOLEAN NOT NULL DEFAULT true)`);
   await db.query(`CREATE TABLE IF NOT EXISTS warehouse_bins(id UUID PRIMARY KEY,warehouse_id UUID NOT NULL,code TEXT NOT NULL,name TEXT NOT NULL,UNIQUE(warehouse_id,code))`);
@@ -99,7 +103,7 @@ app.get('/inventory/:productId', async (req, res) => {
   const item = rows[0];
   res.json(item ? { product_id: item.productId, available_qty: item.availableQty, version: item.version } : { product_id: req.params.productId, available_qty: 0, version: 0 });
 });
-app.patch('/inventory/:productId', requireAuth, requireRole('admin'), requirePermission('inventory.update'), async (req, res) => {
+app.patch('/inventory/:productId', requireAuth, requireRole('admin'), requirePermission('inventory.update'), validateDto(InventoryAdjustmentDto), idempotency(db, 'inventory.adjust'), async (req, res) => {
   const quantity = Number(req.body.availableQty);
   if (!Number.isInteger(quantity) || quantity < 0) return res.status(400).json({ code: 'INVALID_QUANTITY' });
   const current = await db.query(`SELECT * FROM inventory_balances WHERE product_id=$1 AND warehouse_id=$2 LIMIT 1`, [req.params.productId, req.body.warehouseId || centralWarehouseId]);
@@ -111,7 +115,7 @@ app.patch('/inventory/:productId', requireAuth, requireRole('admin'), requirePer
   await publish('inventory.adjusted', { productId: req.params.productId, variantId: current.rows[0]?.variant_id || req.params.productId, warehouseId: req.body.warehouseId || centralWarehouseId, availableQty: quantity, reservedQty: Number(current.rows[0]?.reserved_qty || 0), actorId: req.user.sub, reason: req.body.reason || '관리자 재고 조정' });
   res.json({ product_id: req.params.productId, available_qty: quantity });
 });
-app.post('/inventory/operations/transfers', requireAuth, requireRole('admin'), requirePermission('inventory.update'), async (req, res) => {
+app.post('/inventory/operations/transfers', requireAuth, requireRole('admin'), requirePermission('inventory.update'), idempotency(db, 'inventory.transfer'), async (req, res) => {
   const { variantId, productId, fromWarehouseId, toWarehouseId, quantity, reason } = req.body;
   if (!variantId || !fromWarehouseId || !toWarehouseId || !Number.isInteger(Number(quantity)) || Number(quantity) <= 0) return res.status(400).json({ code: 'INVALID_TRANSFER' });
   const moved = await db.query(`UPDATE inventory_balances SET available_qty=available_qty-$1,version=version+1 WHERE warehouse_id=$2 AND variant_id=$3 AND available_qty >= $1 RETURNING id`, [Number(quantity), fromWarehouseId, variantId]);

@@ -20,7 +20,7 @@ export default function LoginPage() {
     const body = { email: form.get('email'), password: form.get('password') };
     if (mode === 'register') body.name = form.get('name');
     try {
-      const response = await fetch(`${apiBase}/auth/${mode}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const response = await fetch(`${apiBase}/auth/${mode}`, { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', 'x-client-platform': process.env.NEXT_PUBLIC_RUNTIME === 'capacitor' ? 'capacitor' : 'web' }, body: JSON.stringify(body) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.code === 'EMAIL_EXISTS' ? '이미 가입된 이메일입니다.' : '이메일과 비밀번호를 확인해주세요.');
       saveSession(data);
@@ -30,7 +30,7 @@ export default function LoginPage() {
     } catch (error) { setStatus({ loading: false, message: error.message }); }
   }
 
-  function logout() { clearSession(); setSession(null); setStatus({ loading: false, message: '로그아웃되었습니다.' }); }
+  async function logout() { const current=readSession();await fetch(`${apiBase}/auth/logout`,{method:'POST',credentials:'include',headers:{'content-type':'application/json',...(current?.csrfToken?{'x-csrf-token':current.csrfToken}:{})},body:'{}'}).catch(()=>{});clearSession(); setSession(null); setStatus({ loading: false, message: '로그아웃되었습니다.' }); }
 
   return <main className="min-h-screen bg-[#f6f8fc] px-5 py-8 text-slate-950">
     <div className="mx-auto max-w-6xl"><a href="/" className="inline-flex items-center gap-2 text-sm font-bold"><ArrowLeft size={16}/> 스토어로 돌아가기</a></div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Check, Circle, Package } from 'lucide-react';
+import { authHeaders } from '@/lib/session';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:18080/api';
 const money = value => `${new Intl.NumberFormat('ko-KR').format(value)}원`;
@@ -12,7 +13,7 @@ export default function OrderDetailPage() {
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('id');
     if (!id) { setView({ loading: false, order: null, error: '주문 번호가 없습니다.' }); return; }
-    fetch(`${apiBase}/orders/${encodeURIComponent(id)}`).then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.code); return data; }).then(order => setView({ loading: false, order, error: '' })).catch(() => setView({ loading: false, order: null, error: '주문 상세를 불러오지 못했습니다.' }));
+    fetch(`${apiBase}/orders/${encodeURIComponent(id)}`, { credentials: 'include', headers: authHeaders() }).then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.code); return data; }).then(order => setView({ loading: false, order, error: '' })).catch(() => setView({ loading: false, order: null, error: '주문 상세를 불러오지 못했습니다.' }));
   }, []);
 
   if (view.loading) return <main className="min-h-screen bg-[#f6f8fc] p-8 text-sm">주문 정보를 불러오는 중...</main>;

@@ -2,9 +2,12 @@ const { eq, and, desc, sql } = require('drizzle-orm');
 const { database } = require('../../shared/db');
 const { orders, orderItems } = require('../../shared/schema');
 const { server, listen } = require('../../shared/http');
-const { publish, subscribe } = require('../../shared/bus');
-const { requireAuth, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
+const { publish, subscribe, registerReliability } = require('../../shared/bus');
+const { requireAuth, optionalAuth, requireCsrf, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
 const jwt = require('jsonwebtoken');
+const { idempotency } = require('../../platform/idempotency');
+const { validateDto } = require('../../platform/validation');
+const { GuestAccessDto } = require('../../contracts/dtos');
 
 const db = database('orders');
 const app = server('order');
@@ -15,6 +18,7 @@ const allowedTransitions = {
 
 async function init() {
   await db.wait();
+  await registerReliability('order', db);
   await db.query(`DO $$ BEGIN CREATE TYPE order_status AS ENUM ('pending','confirmed','preparing','shipped','delivered','cancelled'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
   await db.query(`DO $$ BEGIN CREATE TYPE payment_status AS ENUM ('pending','approved','partially_refunded','refunded','cancelled','failed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
   await db.query(`DO $$ BEGIN CREATE TYPE fulfillment_status AS ENUM ('unfulfilled','ready','shipped','delivered','returned'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
@@ -27,6 +31,7 @@ async function init() {
   await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method TEXT`);
   await db.query(`CREATE TABLE IF NOT EXISTS coupons(id UUID PRIMARY KEY,code TEXT UNIQUE NOT NULL,type TEXT NOT NULL,value INTEGER NOT NULL,min_order_amount INTEGER NOT NULL DEFAULT 0,max_discount_amount INTEGER,starts_at TIMESTAMPTZ,ends_at TIMESTAMPTZ,status TEXT NOT NULL DEFAULT 'active',usage_limit INTEGER,per_customer_limit INTEGER NOT NULL DEFAULT 1,created_at TIMESTAMPTZ DEFAULT now())`);
   await db.query(`CREATE TABLE IF NOT EXISTS coupon_redemptions(id UUID PRIMARY KEY,coupon_id UUID NOT NULL,order_id UUID NOT NULL,owner_id UUID NOT NULL,discount_amount INTEGER NOT NULL,created_at TIMESTAMPTZ DEFAULT now(),UNIQUE(coupon_id,owner_id))`);
+  await db.query(`CREATE TABLE IF NOT EXISTS order_saga_steps(id UUID PRIMARY KEY,order_id UUID NOT NULL,step TEXT NOT NULL,status TEXT NOT NULL,event_id UUID,error_code TEXT,error_message TEXT,compensation_status TEXT,metadata JSONB NOT NULL DEFAULT '{}',started_at TIMESTAMPTZ NOT NULL DEFAULT now(),completed_at TIMESTAMPTZ)`);
   await db.query(`INSERT INTO coupons(id,code,type,value,min_order_amount,max_discount_amount,status,usage_limit,per_customer_limit) VALUES($1,'TECHZONE10','percent',10,300000,50000,'active',10000,1) ON CONFLICT(code) DO NOTHING`, [crypto.randomUUID()]);
   await seedOrders();
   await subscribe('order', ['payment.approved', 'payment.refunded', 'inventory.reserved', 'inventory.failed', 'shipment.created', 'shipment.shipped', 'shipment.delivered', 'return.received'], onEvent);
@@ -101,21 +106,38 @@ async function onEvent(event) {
   const payload = event.payload;
   const orderId = payload.orderId;
   if (!orderId) return;
-  if (event.type === 'payment.approved') {
-    await db.query(`UPDATE orders SET payment_status='approved',updated_at=now() WHERE id=$1`, [orderId]);
-    await publish('inventory.reserve', { orderId, userId: payload.userId, items: payload.items });
-  } else if (event.type === 'payment.refunded') {
-    await db.query(`UPDATE orders SET payment_status=CASE WHEN $2 >= total_amount THEN 'refunded'::payment_status ELSE 'partially_refunded'::payment_status END,updated_at=now() WHERE id=$1`, [orderId, Number(payload.refundAmount)]);
-  } else if (event.type === 'inventory.reserved') {
-    const updated = await db.orm.update(orders).set({ status: 'confirmed', fulfillmentStatus: 'ready', updatedAt: new Date() }).where(and(eq(orders.id, orderId), eq(orders.status, 'pending'))).returning({ userId: orders.userId, totalAmount: orders.totalAmount, orderNumber: orders.orderNumber });
-    if (updated[0]) await publish('order.confirmed', { orderId, userId: updated[0].userId, totalAmount: updated[0].totalAmount, orderNumber: updated[0].orderNumber });
-  } else if (event.type === 'inventory.failed') {
-    const cancelled = await db.orm.update(orders).set({ status: 'cancelled', paymentStatus: 'cancelled', updatedAt: new Date() }).where(eq(orders.id, orderId)).returning({ userId: orders.userId, orderNumber: orders.orderNumber });
-    if (cancelled[0]) await publish('order.cancelled', { orderId, userId: cancelled[0].userId, orderNumber: cancelled[0].orderNumber, reason: payload.reason || 'OUT_OF_STOCK' });
-  } else if (event.type === 'shipment.created') await transitionFromEvent(orderId, 'preparing', 'ready');
-  else if (event.type === 'shipment.shipped') await transitionFromEvent(orderId, 'shipped', 'shipped');
-  else if (event.type === 'shipment.delivered') await transitionFromEvent(orderId, 'delivered', 'delivered');
-  else if (event.type === 'return.received') await db.query(`UPDATE orders SET fulfillment_status='returned',updated_at=now() WHERE id=$1`, [orderId]);
+  const stepId = await recordSaga(orderId, event.type, 'processing', event);
+  try {
+    if (event.type === 'payment.approved') {
+      await db.query(`UPDATE orders SET payment_status='approved',updated_at=now() WHERE id=$1`, [orderId]);
+      await publish('inventory.reserve', { orderId, userId: payload.userId, items: payload.items }, { causationId: event.id, correlationId: event.correlationId });
+    } else if (event.type === 'payment.refunded') {
+      await db.query(`UPDATE orders SET payment_status=CASE WHEN $2 >= total_amount THEN 'refunded'::payment_status ELSE 'partially_refunded'::payment_status END,updated_at=now() WHERE id=$1`, [orderId, Number(payload.refundAmount)]);
+    } else if (event.type === 'inventory.reserved') {
+      const updated = await db.orm.update(orders).set({ status: 'confirmed', fulfillmentStatus: 'ready', updatedAt: new Date() }).where(and(eq(orders.id, orderId), eq(orders.status, 'pending'))).returning({ userId: orders.userId, totalAmount: orders.totalAmount, orderNumber: orders.orderNumber });
+      if (updated[0]) await publish('order.confirmed', { orderId, userId: updated[0].userId, totalAmount: updated[0].totalAmount, orderNumber: updated[0].orderNumber }, { causationId: event.id, correlationId: event.correlationId });
+    } else if (event.type === 'inventory.failed') {
+      const cancelled = await db.orm.update(orders).set({ status: 'cancelled', paymentStatus: 'cancelled', updatedAt: new Date() }).where(eq(orders.id, orderId)).returning({ userId: orders.userId, orderNumber: orders.orderNumber });
+      if (cancelled[0]) await publish('order.cancelled', { orderId, userId: cancelled[0].userId, orderNumber: cancelled[0].orderNumber, reason: payload.reason || 'OUT_OF_STOCK' }, { causationId: event.id, correlationId: event.correlationId });
+      await completeSaga(stepId, 'compensated', null, 'completed');
+      return;
+    } else if (event.type === 'shipment.created') await transitionFromEvent(orderId, 'preparing', 'ready');
+    else if (event.type === 'shipment.shipped') await transitionFromEvent(orderId, 'shipped', 'shipped');
+    else if (event.type === 'shipment.delivered') await transitionFromEvent(orderId, 'delivered', 'delivered');
+    else if (event.type === 'return.received') await db.query(`UPDATE orders SET fulfillment_status='returned',updated_at=now() WHERE id=$1`, [orderId]);
+    await completeSaga(stepId, 'completed');
+  } catch (error) {
+    await completeSaga(stepId, 'failed', error);
+    throw error;
+  }
+}
+async function recordSaga(orderId, step, status, event) {
+  const id = crypto.randomUUID();
+  await db.query(`INSERT INTO order_saga_steps(id,order_id,step,status,event_id,metadata) VALUES($1,$2,$3,$4,$5,$6)`, [id, orderId, step, status, event.id || null, { correlationId: event.correlationId, causationId: event.causationId, payload: event.payload || {} }]);
+  return id;
+}
+async function completeSaga(id, status, error, compensationStatus = null) {
+  await db.query(`UPDATE order_saga_steps SET status=$2,error_code=$3,error_message=$4,compensation_status=$5,completed_at=now() WHERE id=$1`, [id, status, error?.code || null, error?.message || null, compensationStatus]);
 }
 async function transitionFromEvent(orderId, status, fulfillmentStatus) {
   const result = await db.query(`UPDATE orders SET status=$2,fulfillment_status=$3,updated_at=now() WHERE id=$1 RETURNING *`, [orderId, status, fulfillmentStatus]);
@@ -135,9 +157,11 @@ app.get('/coupons/admin', requireAuth, requireRole('admin'), requirePermission('
 app.post('/coupons/admin', requireAuth, requireRole('admin'), requirePermission('orders.update'), async (req, res) => { const id=crypto.randomUUID(); await db.query(`INSERT INTO coupons(id,code,type,value,min_order_amount,max_discount_amount,starts_at,ends_at,status,usage_limit,per_customer_limit) VALUES($1,upper($2),$3,$4,$5,$6,$7,$8,$9,$10,1)`,[id,req.body.code,req.body.type||'percent',Number(req.body.value),Number(req.body.minOrderAmount||0),req.body.maxDiscountAmount?Number(req.body.maxDiscountAmount):null,req.body.startsAt||null,req.body.endsAt||null,req.body.status||'active',req.body.usageLimit?Number(req.body.usageLimit):null]);res.status(201).json({id}); });
 app.patch('/coupons/admin/:id', requireAuth, requireRole('admin'), requirePermission('orders.update'), async (req,res)=>{const result=await db.query(`UPDATE coupons SET status=COALESCE($2,status),ends_at=COALESCE($3,ends_at) WHERE id=$1 RETURNING *`,[req.params.id,req.body.status||null,req.body.endsAt||null]);res.json(result.rows[0]);});
 
-app.post('/orders', async (req, res) => {
+app.post('/orders', optionalAuth, idempotency(db, 'order.create'), async (req, res) => {
   const { userId, shipping } = req.body;
   if (!userId || !shipping?.recipient || !shipping?.phone || !shipping?.address) return res.status(400).json({ code: 'INVALID_ORDER' });
+  if (!req.body.guestOrder && (!req.user || req.user.sub !== userId)) return res.status(403).json({ code: 'ORDER_OWNER_MISMATCH', message: '로그인 사용자와 주문자가 일치하지 않습니다.' });
+  if (req.authSource === 'cookie' && req.headers['x-csrf-token'] !== req.cookies?.tz_csrf) return res.status(403).json({ code: 'CSRF_INVALID' });
   let quote; let items;
   try {
     if (req.body.quoteToken) {
@@ -157,23 +181,36 @@ app.post('/orders', async (req, res) => {
     if(used.rows[0]) return res.status(409).json({code:'COUPON_ALREADY_USED'});
   }
   const id=crypto.randomUUID(),orderNumber=`TZ-${new Date().getFullYear()}-${Date.now().toString().slice(-8)}`;
-  await db.query(`INSERT INTO orders(id,user_id,order_number,status,payment_status,fulfillment_status,subtotal_amount,discount_amount,shipping_fee,tax_amount,total_amount,coupon_code,guest_order,payment_method,recipient,phone,address,memo) VALUES($1,$2,$3,'pending','pending','unfulfilled',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,[id,userId,orderNumber,quote.subtotalAmount,quote.discountAmount,quote.shippingFee,quote.taxAmount,quote.totalAmount,quote.coupon?.code||null,Boolean(req.body.guestOrder),req.body.paymentMethod||'card',shipping.recipient,shipping.phone,shipping.address,shipping.memo||null]);
-  for(const item of items) await db.query(`INSERT INTO order_items(id,order_id,product_id,variant_id,sku,name,brand,image,unit_price,discount_amount,tax_amount,quantity) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11)`,[crypto.randomUUID(),id,item.productId,item.variantId||null,item.sku||null,item.name,item.brand,item.image,Number(item.price),Math.round(Number(item.price)*Number(item.quantity)/11),Number(item.quantity)]);
-  await db.query(`INSERT INTO order_addresses(id,order_id,type,recipient,phone,postal_code,address1,address2) VALUES($1,$2,'shipping',$3,$4,$5,$6,$7)`,[crypto.randomUUID(),id,shipping.recipient,shipping.phone,shipping.postalCode||null,shipping.address,shipping.address2||null]);
-  if(quote.coupon) await db.query(`INSERT INTO coupon_redemptions(id,coupon_id,order_id,owner_id,discount_amount) VALUES($1,$2,$3,$4,$5)`,[crypto.randomUUID(),quote.coupon.id,id,userId,quote.discountAmount]);
   const payload={orderId:id,orderNumber,userId,items,subtotalAmount:quote.subtotalAmount,discountAmount:quote.discountAmount,shippingFee:quote.shippingFee,taxAmount:quote.taxAmount,totalAmount:quote.totalAmount,paymentMethod:req.body.paymentMethod||'card',status:'pending',paymentStatus:'pending',fulfillmentStatus:'unfulfilled',recipient:shipping.recipient,createdAt:new Date().toISOString()};
-  await publish('order.created',payload);
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`INSERT INTO orders(id,user_id,order_number,status,payment_status,fulfillment_status,subtotal_amount,discount_amount,shipping_fee,tax_amount,total_amount,coupon_code,guest_order,payment_method,recipient,phone,address,memo) VALUES($1,$2,$3,'pending','pending','unfulfilled',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,[id,userId,orderNumber,quote.subtotalAmount,quote.discountAmount,quote.shippingFee,quote.taxAmount,quote.totalAmount,quote.coupon?.code||null,Boolean(req.body.guestOrder),req.body.paymentMethod||'card',shipping.recipient,shipping.phone,shipping.address,shipping.memo||null]);
+    for(const item of items) await client.query(`INSERT INTO order_items(id,order_id,product_id,variant_id,sku,name,brand,image,unit_price,discount_amount,tax_amount,quantity) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11)`,[crypto.randomUUID(),id,item.productId,item.variantId||null,item.sku||null,item.name,item.brand,item.image,Number(item.price),Math.round(Number(item.price)*Number(item.quantity)/11),Number(item.quantity)]);
+    await client.query(`INSERT INTO order_addresses(id,order_id,type,recipient,phone,postal_code,address1,address2) VALUES($1,$2,'shipping',$3,$4,$5,$6,$7)`,[crypto.randomUUID(),id,shipping.recipient,shipping.phone,shipping.postalCode||null,shipping.address,shipping.address2||null]);
+    if(quote.coupon) await client.query(`INSERT INTO coupon_redemptions(id,coupon_id,order_id,owner_id,discount_amount) VALUES($1,$2,$3,$4,$5)`,[crypto.randomUUID(),quote.coupon.id,id,userId,quote.discountAmount]);
+    await publish('order.created',payload,{client});
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
   res.status(201).json({id,orderNumber,status:'pending',totalAmount:quote.totalAmount,guestOrderToken:req.body.guestOrder?issueGuestToken(id,orderNumber,shipping.phone):undefined});
 });
 
 function issueGuestToken(orderId,orderNumber,phone){return jwt.sign({type:'guest_order',orderId,orderNumber,phone:normalizePhone(phone)},jwtSecret(),{expiresIn:'15m',audience:'techzone-guest-order'});}
 function verifyGuest(req,orderId){try{const token=String(req.headers.authorization||'').replace(/^Bearer /,'');const payload=jwt.verify(token,jwtSecret(),{audience:'techzone-guest-order'});return payload.type==='guest_order'&&payload.orderId===orderId?payload:null;}catch{return null;}}
-app.post('/orders/guest/access',async(req,res)=>{const result=await db.query(`SELECT id,order_number,phone FROM orders WHERE order_number=$1 AND guest_order=true`,[req.body.orderNumber]);const order=result.rows[0];if(!order||normalizePhone(order.phone)!==normalizePhone(req.body.phone))return res.status(401).json({code:'GUEST_ORDER_AUTH_FAILED'});res.json({accessToken:issueGuestToken(order.id,order.order_number,order.phone),expiresIn:900,orderId:order.id});});
+app.post('/orders/guest/access',validateDto(GuestAccessDto),async(req,res)=>{const result=await db.query(`SELECT id,order_number,phone FROM orders WHERE order_number=$1 AND guest_order=true`,[req.body.orderNumber]);const order=result.rows[0];if(!order||normalizePhone(order.phone)!==normalizePhone(req.body.phone))return res.status(401).json({code:'GUEST_ORDER_AUTH_FAILED'});res.json({accessToken:issueGuestToken(order.id,order.order_number,order.phone),expiresIn:900,orderId:order.id});});
 app.get('/orders/guest/:id',async(req,res)=>{if(!verifyGuest(req,req.params.id))return res.status(401).json({code:'GUEST_TOKEN_REQUIRED'});const result=await orderDetail(req.params.id);if(!result)return res.status(404).json({code:'NOT_FOUND'});res.json(result);});
 app.post('/orders/guest/:id/cancel',async(req,res)=>{if(!verifyGuest(req,req.params.id))return res.status(401).json({code:'GUEST_TOKEN_REQUIRED'});const result=await db.query(`UPDATE orders SET status='cancelled',payment_status='cancelled',updated_at=now() WHERE id=$1 AND status IN('pending','confirmed') RETURNING *`,[req.params.id]);if(!result.rows[0])return res.status(409).json({code:'ORDER_NOT_CANCELLABLE'});await publish('order.cancelled',{...orderEvent(result.rows[0]),reason:req.body.reason||'비회원 주문 취소'});res.json({id:req.params.id,status:'cancelled'});});
 app.get('/orders', async (req, res, next) => {
-  if (!req.query.userId) return requireAuth(req, res, () => requireRole('admin')(req, res, next));
-  next();
+  return requireAuth(req, res, () => {
+    if (!req.query.userId) return requireRole('admin')(req, res, next);
+    if (req.user.sub !== req.query.userId && req.user.role !== 'admin') return res.status(403).json({ code: 'RESOURCE_FORBIDDEN' });
+    next();
+  });
 }, async (req, res) => {
   const filter = req.query.userId ? eq(orders.userId, req.query.userId) : undefined;
   const rows = await db.orm.select({ id: orders.id, order_number: orders.orderNumber, user_id: orders.userId, status: orders.status, payment_status: orders.paymentStatus, fulfillment_status: orders.fulfillmentStatus, total_amount: orders.totalAmount, recipient: orders.recipient, created_at: orders.createdAt, item_count: sql`count(${orderItems.id})::int`, image: sql`min(${orderItems.image})` }).from(orders).leftJoin(orderItems, eq(orderItems.orderId, orders.id)).where(filter).groupBy(orders.id).orderBy(desc(orders.createdAt)).limit(200);
@@ -188,12 +225,13 @@ app.patch('/orders/:id/status', requireAuth, requireRole('admin'), requirePermis
   await publish('order.status_changed', { ...orderEvent(result.rows[0]), actorId: req.user.sub, reason: req.body.reason || '관리자 상태 변경' });
   res.json({ id: result.rows[0].id, status: result.rows[0].status });
 });
-app.get('/orders/:id', async (req, res) => {
+app.get('/orders/:id', requireAuth, async (req, res) => {
   const result=await orderDetail(req.params.id);
   if(!result)return res.status(404).json({code:'NOT_FOUND'});
+  if(result.user_id!==req.user.sub&&req.user.role!=='admin')return res.status(403).json({code:'RESOURCE_FORBIDDEN'});
   res.json(result);
 });
-async function orderDetail(id){const rows=await db.query(`SELECT * FROM orders WHERE id=$1`,[id]);if(!rows.rows[0])return null;const items=await db.query(`SELECT * FROM order_items WHERE order_id=$1 ORDER BY id`,[id]);const order=rows.rows[0];return {...order,items:items.rows};}
+async function orderDetail(id){const rows=await db.query(`SELECT * FROM orders WHERE id=$1`,[id]);if(!rows.rows[0])return null;const [items,saga]=await Promise.all([db.query(`SELECT * FROM order_items WHERE order_id=$1 ORDER BY id`,[id]),db.query(`SELECT id,step,status,event_id,error_code,error_message,compensation_status,metadata,started_at,completed_at FROM order_saga_steps WHERE order_id=$1 ORDER BY started_at`,[id])]);const order=rows.rows[0];return {...order,items:items.rows,sagaTimeline:saga.rows};}
 app.get('/internal/orders', requireInternal, async (_, res) => {
   const result = await db.query(`SELECT o.*,count(i.id)::int item_count,min(i.image) image FROM orders o LEFT JOIN order_items i ON i.order_id=o.id GROUP BY o.id ORDER BY o.created_at DESC`);
   res.json({ items: result.rows });

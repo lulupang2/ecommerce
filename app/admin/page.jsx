@@ -11,7 +11,7 @@ import {
   PackageCheck, RefreshCw, RotateCcw, ShoppingBag, Truck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { readSession } from '@/lib/session';
+import { authHeaders, readSession } from '@/lib/session';
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:18080/api';
 const statusLabels = { pending: '결제 대기', confirmed: '주문 확정', preparing: '상품 준비', shipped: '배송 중', delivered: '배송 완료', cancelled: '취소' };
@@ -25,13 +25,12 @@ export default function AdminDashboard() {
 
   async function load() {
     const session = readSession();
-    const token = session?.accessToken || session?.token;
-    if (!token) return setView({ loading: false, error: '관리자 로그인이 필요합니다.', data: null });
+    if (!session?.user) return setView({ loading: false, error: '관리자 로그인이 필요합니다.', data: null });
     setView(current => ({ ...current, loading: true, error: '' }));
     const to = new Date(); const from = new Date(); from.setDate(to.getDate() - (days - 1));
     try {
       const query = new URLSearchParams({ from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) });
-      const response = await fetch(`${API}/admin/dashboard?${query}`, { headers: { authorization: `Bearer ${token}` } });
+      const response = await fetch(`${API}/admin/dashboard?${query}`, { credentials: 'include', headers: authHeaders() });
       const data = await response.json();
       if (!response.ok) throw new Error(data.code === 'MISSING_PERMISSION' ? '대시보드 조회 권한이 없습니다.' : '대시보드 데이터를 불러오지 못했습니다.');
       setView({ loading: false, error: '', data });

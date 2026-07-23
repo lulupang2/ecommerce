@@ -1,6 +1,6 @@
 const { database } = require('../../shared/db');
 const { server, listen } = require('../../shared/http');
-const { publish } = require('../../shared/bus');
+const { publish, registerReliability } = require('../../shared/bus');
 const { requireAuth, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
 
 const db = database('procurement');
@@ -9,6 +9,7 @@ const internalHeaders = () => ({ 'x-internal-key': process.env.INTERNAL_API_KEY 
 
 async function init() {
   await db.wait();
+  await registerReliability('procurement', db);
   await db.query(`DO $$ BEGIN CREATE TYPE purchase_order_status AS ENUM ('draft','approved','partially_received','received','cancelled'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
   await db.query(`CREATE TABLE IF NOT EXISTS suppliers(id UUID PRIMARY KEY,code TEXT UNIQUE NOT NULL,name TEXT NOT NULL,contact_name TEXT,phone TEXT,email TEXT,status TEXT NOT NULL DEFAULT 'active',created_at TIMESTAMPTZ DEFAULT now())`);
   await db.query(`CREATE TABLE IF NOT EXISTS supplier_products(id UUID PRIMARY KEY,supplier_id UUID NOT NULL,product_id UUID,variant_id UUID NOT NULL,supplier_sku TEXT,unit_cost INTEGER NOT NULL CHECK(unit_cost>=0),lead_time_days INTEGER NOT NULL DEFAULT 7,UNIQUE(supplier_id,variant_id))`);

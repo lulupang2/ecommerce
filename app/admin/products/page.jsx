@@ -14,7 +14,7 @@ import { HeadingNode } from '@lexical/rich-text';
 import { ListItemNode, ListNode, INSERT_UNORDERED_LIST_COMMAND } from '@lexical/list';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { Button } from '@/components/ui/button';
-import { readSession } from '@/lib/session';
+import { authHeaders, readSession } from '@/lib/session';
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:18080/api';
 const editorConfig = { namespace: 'TECHZONEProductEditor', theme: { paragraph: 'mb-2' }, onError: error => { throw error; }, nodes: [HeadingNode, ListNode, ListItemNode] };
@@ -46,7 +46,7 @@ export default function ProductEditorPage() {
 
   async function uploadImage() {
     if (!file) return product.image;
-    const response = await fetch(`${API}/media/upload-url`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${session.accessToken}` }, body: JSON.stringify({ fileName: file.name, contentType: file.type }) });
+    const response = await fetch(`${API}/media/upload-url`, { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', ...authHeaders({ mutation: true }) }, body: JSON.stringify({ fileName: file.name, contentType: file.type }) });
     const metadata = await response.json();
     if (!response.ok) throw new Error(metadata.code || 'MEDIA_UPLOAD_FAILED');
     const upload = await fetch(metadata.uploadUrl, { method: 'PUT', headers: { 'content-type': file.type }, body: file });
@@ -59,7 +59,7 @@ export default function ProductEditorPage() {
     setSaving(true);
     try {
       const image = await uploadImage();
-      const response = await fetch(`${API}/products${productId ? `/${productId}` : ''}`, { method: productId ? 'PATCH' : 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${session.accessToken}` }, body: JSON.stringify({ ...product, image, price: Number(product.price), listPrice: Number(product.listPrice || product.price), costPrice: Number(product.costPrice || 0), weightGram: Number(product.weightGram || 0), stock: Number(product.stock) }) });
+      const response = await fetch(`${API}/products${productId ? `/${productId}` : ''}`, { method: productId ? 'PATCH' : 'POST', credentials: 'include', headers: { 'content-type': 'application/json', ...authHeaders({ mutation: true }) }, body: JSON.stringify({ ...product, image, price: Number(product.price), listPrice: Number(product.listPrice || product.price), costPrice: Number(product.costPrice || 0), weightGram: Number(product.weightGram || 0), stock: Number(product.stock) }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.code || 'PRODUCT_SAVE_FAILED');
       setMessage(productId ? '상품을 수정했습니다.' : '상품을 등록했습니다.');

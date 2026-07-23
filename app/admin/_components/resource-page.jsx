@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { createColumnHelper } from '@tanstack/react-table';
 import { ArrowRight, Boxes, CalendarDays, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { readSession } from '@/lib/session';
+import { authHeaders, readSession } from '@/lib/session';
 import ServerDataTable, { SelectColumn } from './server-data-table';
 import ActionDialog from './action-dialog';
 
@@ -70,12 +70,12 @@ export default function ResourcePage({ type }) {
   }, [query]);
 
   async function load() {
-    const session = readSession(); const token = session?.accessToken || session?.token;
-    if (!token) { setLoading(false); setMessage('관리자 로그인이 필요합니다.'); return; }
+    const session = readSession();
+    if (!session?.user) { setLoading(false); setMessage('관리자 로그인이 필요합니다.'); return; }
     setLoading(true);
     try {
       const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== '' && value !== 'all').map(([key, value]) => [key, String(value)]));
-      const response = await fetch(`${API}/admin/${config.endpoint}?${params}`, { headers: { authorization: `Bearer ${token}` } });
+      const response = await fetch(`${API}/admin/${config.endpoint}?${params}`, { credentials: 'include', headers: authHeaders() });
       const data = await response.json();
       if (!response.ok) throw new Error(data.code || '목록을 불러오지 못했습니다.');
       setResult({ items: data.items || [], total: data.total || 0, pageCount: data.pageCount || 1 });
@@ -102,7 +102,7 @@ export default function ResourcePage({ type }) {
     setDialog({ row, ...definitions[config.action.type] });
   }
   async function confirmAction(values) {
-    const session = readSession(); const token = session?.accessToken || session?.token; const row = dialog.row;
+    const row = dialog.row;
     const requests = {
       order: [`orders/${row.order_id}/status`, 'PATCH', values],
       shipment: [`fulfillment/shipments/${row.shipment_id}/status`, 'PATCH', values],
@@ -114,7 +114,7 @@ export default function ResourcePage({ type }) {
     const [path, method, body] = requests[config.action.type];
     setActionLoading(true);
     try {
-      const response = await fetch(`${API}/${path}`, { method, headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+      const response = await fetch(`${API}/${path}`, { method, credentials: 'include', headers: { 'content-type': 'application/json', ...authHeaders({ mutation: true }) }, body: JSON.stringify(body) });
       const data = await response.json();
       if (!response.ok) throw new Error(errorLabel(data.code));
       setDialog(null); setMessage('처리가 완료되었습니다.'); await load();

@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
-  AlertTriangle, BarChart3, Bell, Boxes, ChevronDown, ClipboardList, FileClock, LayoutDashboard,
+  Activity, AlertTriangle, BarChart3, Bell, Boxes, ChevronDown, ClipboardList, FileClock, LayoutDashboard,
   Menu, Package, PackageCheck, PanelLeftClose, PanelLeftOpen, RotateCcw, Search, Settings,
   ShoppingCart, Star, Truck, UserRound, Users, Warehouse, X, PanelsTopLeft, TicketPercent,
 } from 'lucide-react';
-import { readSession } from '@/lib/session';
+import { authHeaders, readSession } from '@/lib/session';
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:18080/api';
 const groups = [
@@ -33,6 +33,7 @@ const groups = [
     { href: '/admin/reviews/', label: '리뷰 관리', icon: Star, permission: 'reviews.update' },
   ] },
   { label: '시스템', items: [
+    { href: '/admin/system/', label: '시스템 상태', icon: Activity, permission: 'admin.manage' },
     { href: '/admin/audit/', label: '감사 로그', icon: FileClock, permission: 'audit.read' },
     { href: '/admin/settings/', label: '권한 설정', icon: Settings, permission: 'admin.manage' },
   ] },
@@ -52,12 +53,11 @@ export default function AdminShell({ children }) {
   useEffect(() => {
     const current = readSession();
     setSession(current);
-    const token = current?.accessToken || current?.token;
-    if (!token) return;
-    const headers = { authorization: `Bearer ${token}` };
+    if (!current?.user) return;
+    const headers = authHeaders();
     Promise.all([
-      fetch(`${API}/admin/alerts`, { headers }).then(response => response.ok ? response.json() : { items: [] }),
-      fetch(`${API}/admin/warehouses`, { headers }).then(response => response.ok ? response.json() : { items: [] }),
+      fetch(`${API}/admin/alerts`, { credentials: 'include', headers }).then(response => response.ok ? response.json() : { items: [] }),
+      fetch(`${API}/admin/warehouses`, { credentials: 'include', headers }).then(response => response.ok ? response.json() : { items: [] }),
     ]).then(([alertData, warehouseData]) => { setAlerts(alertData.items || []); setWarehouses(warehouseData.items || []); }).catch(() => {});
   }, [pathname]);
 

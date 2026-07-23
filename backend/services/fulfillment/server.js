@@ -1,8 +1,9 @@
 const { database } = require('../../shared/db');
 const { server, listen } = require('../../shared/http');
-const { publish, subscribe } = require('../../shared/bus');
+const { publish, subscribe, registerReliability } = require('../../shared/bus');
 const { requireAuth, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
 const jwt = require('jsonwebtoken');
+const { idempotency } = require('../../platform/idempotency');
 
 const db = database('fulfillment');
 const app = server('fulfillment');
@@ -10,6 +11,7 @@ const internalHeaders = () => ({ 'x-internal-key': process.env.INTERNAL_API_KEY 
 
 async function init() {
   await db.wait();
+  await registerReliability('fulfillment', db);
   await db.query(`DO $$ BEGIN CREATE TYPE shipment_status AS ENUM ('ready','packed','shipped','delivered','cancelled'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
   await db.query(`DO $$ BEGIN CREATE TYPE return_status AS ENUM ('requested','approved','received','refunded','rejected'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
   await db.query(`CREATE TABLE IF NOT EXISTS shipments(id UUID PRIMARY KEY,order_id UUID NOT NULL UNIQUE,shipment_number TEXT UNIQUE NOT NULL,warehouse_id UUID NOT NULL,carrier TEXT NOT NULL,tracking_number TEXT UNIQUE,status shipment_status NOT NULL,recipient TEXT,shipped_at TIMESTAMPTZ,delivered_at TIMESTAMPTZ,created_at TIMESTAMPTZ DEFAULT now(),updated_at TIMESTAMPTZ DEFAULT now())`);
@@ -65,7 +67,7 @@ app.get('/fulfillment/shipments', requireAuth, requireRole('admin'), async (_, r
   const result = await db.query(`SELECT * FROM shipments ORDER BY created_at DESC`);
   res.json({ items: result.rows });
 });
-app.post('/fulfillment/shipments', requireAuth, requireRole('admin'), requirePermission('fulfillment.update'), async (req, res) => {
+app.post('/fulfillment/shipments', requireAuth, requireRole('admin'), requirePermission('fulfillment.update'), idempotency(db, 'fulfillment.shipment'), async (req, res) => {
   const shipment = await createShipment(req.body);
   await publish('admin.action', { actorId: req.user.sub, action: 'shipment.create', entityType: 'shipment', entityId: shipment.shipmentId, metadata: req.body });
   res.status(201).json(shipment);

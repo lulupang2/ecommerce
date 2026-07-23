@@ -11,6 +11,11 @@ const app = server('media');
 const bucket = process.env.S3_BUCKET || 'techzone-media';
 const endpoint = process.env.S3_ENDPOINT || '';
 const s3 = endpoint ? new S3Client({ endpoint, region: process.env.S3_REGION || 'us-east-1', forcePathStyle: true, credentials: { accessKeyId: process.env.S3_ACCESS_KEY || 'minioadmin', secretAccessKey: process.env.S3_SECRET_KEY || 'minioadmin' } }) : null;
+const allowedImages = new Map([
+  ['image/jpeg', new Set(['jpg', 'jpeg'])],
+  ['image/png', new Set(['png'])],
+  ['image/webp', new Set(['webp'])],
+]);
 
 async function init() {
   await db.wait();
@@ -20,6 +25,10 @@ async function init() {
 
 app.post('/media/upload-url', requireAuth, requireRole('admin'), async (req, res) => {
   const { contentType = 'image/jpeg', fileName = 'asset.jpg' } = req.body || {};
+  const extension = String(fileName).split('.').pop().toLowerCase();
+  if (!allowedImages.get(contentType)?.has(extension)) {
+    return res.status(400).json({ code: 'INVALID_MEDIA_TYPE', message: 'JPG, PNG, WEBP 이미지만 업로드할 수 있습니다.' });
+  }
   const ownerId = req.user.sub;
   const id = crypto.randomUUID();
   const safeName = String(fileName).replace(/[^a-zA-Z0-9._-]/g, '-');

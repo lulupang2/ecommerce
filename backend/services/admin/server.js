@@ -1,7 +1,7 @@
 const { database } = require('../../shared/db');
 const { server, listen } = require('../../shared/http');
-const { subscribe } = require('../../shared/bus');
-const { requireAuth, requireRole, requirePermission } = require('../../shared/auth');
+const { publish, subscribe, registerReliability } = require('../../shared/bus');
+const { requireAuth, requireCsrf, requireRole, requirePermission } = require('../../shared/auth');
 
 const db = database('admin');
 const app = server('admin');
@@ -18,8 +18,9 @@ const serviceUrls = {
 
 async function init() {
   await db.wait();
+  await registerReliability('admin', db);
   await createTables();
-  await subscribe('admin', ['product.*', 'order.*', 'payment.*', 'inventory.*', 'shipment.*', 'return.*', 'purchase_order.*', 'admin.*', 'user.*'], projectEvent);
+  await subscribe('admin', ['product.*', 'order.*', 'payment.*', 'inventory.*', 'shipment.*', 'return.*', 'purchase_order.*', 'admin.*', 'user.*', 'system.*'], projectEvent);
   setTimeout(() => rebuild().catch(error => console.warn('admin rebuild retry:', error.message)), 3000);
 }
 async function createTables() {
@@ -35,6 +36,7 @@ async function createTables() {
   await db.query(`CREATE TABLE IF NOT EXISTS admin_member_projection(user_id UUID PRIMARY KEY,email TEXT,name TEXT,role TEXT,admin_role TEXT,status TEXT,created_at TIMESTAMPTZ,updated_at TIMESTAMPTZ DEFAULT now())`);
   await db.query(`CREATE TABLE IF NOT EXISTS admin_review_projection(review_id UUID PRIMARY KEY,product_id UUID,user_name TEXT,rating INTEGER,body TEXT,status TEXT,created_at TIMESTAMPTZ)`);
   await db.query(`CREATE TABLE IF NOT EXISTS admin_audit_logs(id UUID PRIMARY KEY,actor_id UUID,action TEXT NOT NULL,entity_type TEXT,entity_id TEXT,reason TEXT,metadata JSONB NOT NULL DEFAULT '{}',occurred_at TIMESTAMPTZ DEFAULT now())`);
+  await db.query(`CREATE TABLE IF NOT EXISTS admin_dead_letters(id UUID PRIMARY KEY,service TEXT NOT NULL,event_id UUID NOT NULL,event_type TEXT NOT NULL,envelope JSONB NOT NULL,error TEXT NOT NULL,retry_count INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at TIMESTAMPTZ NOT NULL DEFAULT now(),resolved_at TIMESTAMPTZ,resolved_by UUID)`);
 }
 
 async function projectEvent(event) {
@@ -48,7 +50,17 @@ async function projectEvent(event) {
   else if (event.type.startsWith('shipment.')) await projectShipment(payload);
   else if (event.type.startsWith('return.')) await projectReturn(payload);
   else if (event.type.startsWith('purchase_order.')) await projectPurchaseOrder(payload);
+  else if (event.type === 'system.dead_lettered') await projectDeadLetter(payload);
   if (payload.actorId || event.type === 'admin.action' || event.type === 'admin.role_changed') await audit(event.type, payload);
+}
+async function projectDeadLetter(payload) {
+  const original = payload.event || {};
+  if (!original.id || !original.type) return;
+  await db.query(
+    `INSERT INTO admin_dead_letters(id,service,event_id,event_type,envelope,error,retry_count)
+     VALUES($1,$2,$3,$4,$5,$6,$7)`,
+    [crypto.randomUUID(), payload.service, original.id, original.type, original, payload.error || 'Unknown consumer error', Number(payload.retryCount || 0)],
+  );
 }
 async function projectProduct(payload) {
   if (!payload.productId || !payload.name) return;
@@ -169,6 +181,7 @@ const resources = {
   members: { permission: 'members.read', table: 'admin_member_projection', search: ['name', 'email'], status: 'status', date: 'created_at', id: 'user_id', sorts: ['created_at', 'name', 'status'] },
   reviews: { permission: 'reviews.update', table: 'admin_review_projection', search: ['user_name', 'body'], status: 'status', date: 'created_at', id: 'review_id', sorts: ['created_at', 'rating', 'status'] },
   'audit-logs': { permission: 'audit.read', table: 'admin_audit_logs', search: ['action', 'entity_type', 'entity_id', 'reason'], status: null, date: 'occurred_at', id: 'id', sorts: ['occurred_at', 'action'] },
+  'dead-letters': { permission: 'admin.manage', table: 'admin_dead_letters', search: ['service', 'event_type', 'error'], status: 'status', date: 'created_at', id: 'id', sorts: ['created_at', 'service', 'event_type', 'status'] },
 };
 for (const [path, config] of Object.entries(resources)) app.get(`/admin/${path}`, requireAuth, requireRole('admin'), requirePermission(config.permission), async (req, res) => listResource(req, res, config));
 async function listResource(req, res, config) {
@@ -193,10 +206,45 @@ app.get('/admin/alerts', requireAuth, requireRole('admin'), async (_, res) => {
 });
 app.get('/admin/warehouses', requireAuth, requireRole('admin'), async (_, res) => { const data = await fetchInternal('inventory', '/internal/warehouses'); res.json(data); });
 app.get('/admin/roles', requireAuth, requireRole('admin'), async (req, res) => {
-  const response = await fetch(`${serviceUrls.auth}/auth/roles`, { headers: { authorization: req.headers.authorization } });
+  const authorization = req.headers.authorization || (req.cookies?.tz_access ? `Bearer ${req.cookies.tz_access}` : '');
+  const response = await fetch(`${serviceUrls.auth}/auth/roles`, { headers: { authorization } });
   res.status(response.status).send(await response.text());
 });
-app.post('/admin/rebuild', requireAuth, requireRole('admin'), requirePermission('admin.manage'), async (req, res) => {
+app.post('/admin/dead-letters/:id/reprocess', requireAuth, requireRole('admin'), requirePermission('admin.manage'), requireCsrf, async (req, res) => {
+  const result = await db.query(`UPDATE admin_dead_letters SET status='reprocessed',resolved_at=now(),resolved_by=$2 WHERE id=$1 AND status='pending' RETURNING *`, [req.params.id, req.user.sub]);
+  if (!result.rows[0]) return res.status(404).json({ code: 'DEAD_LETTER_NOT_FOUND' });
+  const original = result.rows[0].envelope;
+  const replay = await publish(original.type, original.payload, {
+    correlationId: original.correlationId,
+    causationId: original.id,
+    actorId: req.user.sub,
+  });
+  await audit('admin.dead_letter_reprocessed', { actorId: req.user.sub, entityType: 'dead_letter', entityId: req.params.id, reason: req.body?.reason, metadata: { originalEventId: original.id, replayEventId: replay.id } });
+  res.json({ id: req.params.id, status: 'reprocessed', replayEventId: replay.id });
+});
+app.post('/admin/dead-letters/:id/discard', requireAuth, requireRole('admin'), requirePermission('admin.manage'), requireCsrf, async (req, res) => {
+  const result = await db.query(`UPDATE admin_dead_letters SET status='discarded',resolved_at=now(),resolved_by=$2 WHERE id=$1 AND status='pending' RETURNING id`, [req.params.id, req.user.sub]);
+  if (!result.rows[0]) return res.status(404).json({ code: 'DEAD_LETTER_NOT_FOUND' });
+  await audit('admin.dead_letter_discarded', { actorId: req.user.sub, entityType: 'dead_letter', entityId: req.params.id, reason: req.body?.reason || '관리자 폐기' });
+  res.json({ id: req.params.id, status: 'discarded' });
+});
+app.get('/admin/system-status', requireAuth, requireRole('admin'), requirePermission('admin.manage'), async (req, res) => {
+  const [deadLetters, outbox, processed] = await Promise.all([
+    db.query(`SELECT count(*)::int count FROM admin_dead_letters WHERE status='pending'`),
+    db.query(`SELECT count(*)::int count,COALESCE(EXTRACT(EPOCH FROM (now()-min(occurred_at))),0)::int oldest_seconds FROM outbox_events WHERE published_at IS NULL`),
+    db.query(`SELECT count(*)::int count FROM inbox_events WHERE processed_at>now()-interval '24 hours'`),
+  ]);
+  res.json({
+    service: 'admin-query',
+    status: Number(outbox.rows[0].oldest_seconds) > 300 ? 'degraded' : 'healthy',
+    pendingDeadLetters: deadLetters.rows[0].count,
+    pendingOutbox: outbox.rows[0].count,
+    oldestOutboxSeconds: outbox.rows[0].oldest_seconds,
+    processedEvents24h: processed.rows[0].count,
+    traceUrl: process.env.GRAFANA_URL || 'http://localhost:13000',
+  });
+});
+app.post('/admin/rebuild', requireAuth, requireRole('admin'), requirePermission('admin.manage'), requireCsrf, async (req, res) => {
   const result = await rebuild();
   await audit('admin.projection_rebuilt', { actorId: req.user.sub, entityType: 'admin_projection', metadata: result, reason: req.body?.reason || '수동 재구축' });
   res.json(result);

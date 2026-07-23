@@ -1,82 +1,228 @@
+x-service: &service
+  build: { context: ., dockerfile: backend/Dockerfile }
+  restart: unless-stopped
+  environment: &common-env
+    NODE_ENV: development
+    RABBIT_URL: amqp://rabbitmq:5672
+    REDIS_URL: redis://redis:6379
+    AUTH_URL: http://auth:3001
+    AUTH_JWKS_URL: http://auth:3001/.well-known/jwks.json
+    AUTH_PRIVATE_KEY_BASE64: "${AUTH_PRIVATE_KEY_BASE64:-}"
+    JWT_ISSUER: techzone-auth
+    INTERNAL_API_KEY: techzone-internal
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    OTEL_RESOURCE_ATTRIBUTES: deployment.environment=local
+    GRAFANA_URL: http://localhost:13000
+    SCHEMA_MANAGED_BY_MIGRATIONS: "true"
+    NODE_OPTIONS: --require=/app/backend/platform/otel-register.js
+  depends_on:
+    postgres: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  healthcheck:
+    test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$${PORT}/health/ready >/dev/null || exit 1"]
+    interval: 10s
+    timeout: 4s
+    retries: 20
+    start_period: 15s
+  stop_grace_period: 30s
+
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment: { POSTGRES_USER: canvas, POSTGRES_PASSWORD: canvas, POSTGRES_DB: postgres }
-    volumes: ["./infra/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U canvas"], interval: 5s, timeout: 3s, retries: 20 }
+
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    ports: ["15672:15672"]
     healthcheck: { test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"], interval: 5s, timeout: 3s, retries: 20 }
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes: [redis-data:/data]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 20 }
+
   minio:
     image: minio/minio:RELEASE.2025-06-13T11-33-47Z
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment: { MINIO_ROOT_USER: minioadmin, MINIO_ROOT_PASSWORD: minioadmin }
     ports: ["19000:9000", "19001:9001"]
+    volumes: [minio-data:/data]
     healthcheck: { test: ["CMD", "mc", "ready", "local"], interval: 5s, timeout: 3s, retries: 20 }
-  auth: &service
-    build: { context: . , dockerfile: backend/Dockerfile }
+
+  migration:
+    <<: *service
+    command: node scripts/migrate.mjs
+    environment:
+      <<: *common-env
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: canvas
+      POSTGRES_PASSWORD: canvas
+    restart: "no"
+    healthcheck: { disable: true }
+
+  auth:
+    <<: *service
     command: node backend/services/auth/server.js
-    environment: { PORT: 3001, DATABASE_URL: postgres://canvas:canvas@postgres:5432/auth, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, ADMIN_EMAIL: admin@techzone.local, ADMIN_PASSWORD: TechzoneAdmin123!, ADMIN_NAME: TECHZONE Admin }
-    depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy } }
-    healthcheck: { test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$${PORT}/health >/dev/null || exit 1"], interval: 5s, timeout: 3s, retries: 12, start_period: 5s }
+    environment:
+      <<: *common-env
+      PORT: 3001
+      SERVICE_NAME: auth
+      DATABASE_URL: postgres://canvas:canvas@postgres:5432/auth
+      ADMIN_EMAIL: admin@techzone.local
+      ADMIN_PASSWORD: TechzoneAdmin123!
+      ADMIN_NAME: TECHZONE Admin
+    depends_on:
+      migration: { condition: service_completed_successfully }
+      rabbitmq: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
   catalog:
     <<: *service
     command: node backend/services/catalog/server.js
-    environment: { PORT: 3002, DATABASE_URL: postgres://canvas:canvas@postgres:5432/catalog, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, ORDER_URL: http://order:3004 }
+    environment: { <<: *common-env, PORT: 3002, SERVICE_NAME: catalog, DATABASE_URL: postgres://canvas:canvas@postgres:5432/catalog, ORDER_URL: http://order:3004 }
+    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy } }
+
   cart:
     <<: *service
     command: node backend/services/cart/server.js
-    environment: { PORT: 3003, DATABASE_URL: postgres://canvas:canvas@postgres:5432/cart, RABBIT_URL: amqp://rabbitmq:5672 }
+    environment: { <<: *common-env, PORT: 3003, SERVICE_NAME: cart, DATABASE_URL: postgres://canvas:canvas@postgres:5432/cart }
+    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
+
   order:
     <<: *service
     command: node backend/services/order/server.js
-    environment: { PORT: 3004, DATABASE_URL: postgres://canvas:canvas@postgres:5432/orders, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, AUTH_URL: http://auth:3001, CATALOG_URL: http://catalog:3002 }
-    depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
+    environment: { <<: *common-env, PORT: 3004, SERVICE_NAME: order, DATABASE_URL: postgres://canvas:canvas@postgres:5432/orders, CATALOG_URL: http://catalog:3002 }
+    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
+
   payment:
     <<: *service
     command: node backend/services/payment/server.js
-    environment: { PORT: 3005, DATABASE_URL: postgres://canvas:canvas@postgres:5432/payments, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, TOSS_SECRET_KEY: "${TOSS_SECRET_KEY:-}" }
+    environment: { <<: *common-env, PORT: 3005, SERVICE_NAME: payment, DATABASE_URL: postgres://canvas:canvas@postgres:5432/payments, TOSS_SECRET_KEY: "${TOSS_SECRET_KEY:-}" }
+    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
+
   inventory:
     <<: *service
     command: node backend/services/inventory/server.js
-    environment: { PORT: 3006, DATABASE_URL: postgres://canvas:canvas@postgres:5432/inventory, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, CATALOG_URL: http://catalog:3002 }
-    depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, catalog: { condition: service_healthy } }
+    environment: { <<: *common-env, PORT: 3006, SERVICE_NAME: inventory, DATABASE_URL: postgres://canvas:canvas@postgres:5432/inventory, CATALOG_URL: http://catalog:3002 }
+    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
+
   notification:
     <<: *service
     command: node backend/services/notification/server.js
-    environment: { PORT: 3007, DATABASE_URL: postgres://canvas:canvas@postgres:5432/notifications, RABBIT_URL: amqp://rabbitmq:5672 }
+    environment: { <<: *common-env, PORT: 3007, SERVICE_NAME: notification, DATABASE_URL: postgres://canvas:canvas@postgres:5432/notifications }
+    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
+
   search:
     <<: *service
     command: node backend/services/search/server.js
-    environment: { PORT: 3008, DATABASE_URL: postgres://canvas:canvas@postgres:5432/search, RABBIT_URL: amqp://rabbitmq:5672, CATALOG_URL: http://catalog:3002 }
+    environment: { <<: *common-env, PORT: 3008, SERVICE_NAME: search, DATABASE_URL: postgres://canvas:canvas@postgres:5432/search, CATALOG_URL: http://catalog:3002 }
+    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, catalog: { condition: service_healthy } }
+
   media:
     <<: *service
     command: node backend/services/media/server.js
-    environment: { PORT: 3009, DATABASE_URL: postgres://canvas:canvas@postgres:5432/media, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, S3_ENDPOINT: http://minio:9000, S3_PUBLIC_ENDPOINT: http://localhost:19000, S3_ACCESS_KEY: minioadmin, S3_SECRET_KEY: minioadmin, S3_BUCKET: techzone-media }
-    depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, minio: { condition: service_healthy } }
+    environment:
+      <<: *common-env
+      PORT: 3009
+      SERVICE_NAME: media
+      DATABASE_URL: postgres://canvas:canvas@postgres:5432/media
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: http://localhost:19000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: techzone-media
+    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, minio: { condition: service_healthy } }
+
   fulfillment:
     <<: *service
     command: node backend/services/fulfillment/server.js
-    environment: { PORT: 3010, DATABASE_URL: postgres://canvas:canvas@postgres:5432/fulfillment, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, ORDER_URL: http://order:3004, INVENTORY_URL: http://inventory:3006, PAYMENT_URL: http://payment:3005 }
-    depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, order: { condition: service_healthy }, inventory: { condition: service_healthy } }
+    environment: { <<: *common-env, PORT: 3010, SERVICE_NAME: fulfillment, DATABASE_URL: postgres://canvas:canvas@postgres:5432/fulfillment, ORDER_URL: http://order:3004, INVENTORY_URL: http://inventory:3006, PAYMENT_URL: http://payment:3005 }
+    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, order: { condition: service_healthy }, inventory: { condition: service_healthy } }
+
   procurement:
     <<: *service
     command: node backend/services/procurement/server.js
-    environment: { PORT: 3011, DATABASE_URL: postgres://canvas:canvas@postgres:5432/procurement, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, CATALOG_URL: http://catalog:3002, INVENTORY_URL: http://inventory:3006 }
-    depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, catalog: { condition: service_healthy }, inventory: { condition: service_healthy } }
+    environment: { <<: *common-env, PORT: 3011, SERVICE_NAME: procurement, DATABASE_URL: postgres://canvas:canvas@postgres:5432/procurement, CATALOG_URL: http://catalog:3002, INVENTORY_URL: http://inventory:3006 }
+    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy }, inventory: { condition: service_healthy } }
+
   admin:
     <<: *service
     command: node backend/services/admin/server.js
-    environment: { PORT: 3012, DATABASE_URL: postgres://canvas:canvas@postgres:5432/admin, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, AUTH_URL: http://auth:3001, CATALOG_URL: http://catalog:3002, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, FULFILLMENT_URL: http://fulfillment:3010, PROCUREMENT_URL: http://procurement:3011 }
-    depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy }, order: { condition: service_healthy }, payment: { condition: service_healthy }, inventory: { condition: service_healthy }, fulfillment: { condition: service_healthy }, procurement: { condition: service_healthy } }
+    environment: { <<: *common-env, PORT: 3012, SERVICE_NAME: admin, DATABASE_URL: postgres://canvas:canvas@postgres:5432/admin, CATALOG_URL: http://catalog:3002, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, FULFILLMENT_URL: http://fulfillment:3010, PROCUREMENT_URL: http://procurement:3011 }
+    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy }, order: { condition: service_healthy }, payment: { condition: service_healthy }, inventory: { condition: service_healthy }, fulfillment: { condition: service_healthy }, procurement: { condition: service_healthy } }
+
   gateway:
     <<: *service
     command: node backend/services/gateway/server.js
-    environment: { PORT: 8080, AUTH_URL: http://auth:3001, CATALOG_URL: http://catalog:3002, CART_URL: http://cart:3003, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, NOTIFICATION_URL: http://notification:3007, SEARCH_URL: http://search:3008, MEDIA_URL: http://media:3009, FULFILLMENT_URL: http://fulfillment:3010, PROCUREMENT_URL: http://procurement:3011, ADMIN_URL: http://admin:3012 }
+    environment: { <<: *common-env, PORT: 8080, SERVICE_NAME: gateway, CATALOG_URL: http://catalog:3002, CART_URL: http://cart:3003, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, NOTIFICATION_URL: http://notification:3007, SEARCH_URL: http://search:3008, MEDIA_URL: http://media:3009, FULFILLMENT_URL: http://fulfillment:3010, PROCUREMENT_URL: http://procurement:3011, ADMIN_URL: http://admin:3012 }
     ports: ["18080:8080"]
     depends_on: [auth, catalog, cart, order, payment, inventory, notification, search, media, fulfillment, procurement, admin]
+
   web:
-    build: { context: . , dockerfile: frontend.Dockerfile }
+    build: { context: ., dockerfile: frontend.Dockerfile }
+    restart: unless-stopped
     environment: { PORT: 3000, INTERNAL_API_BASE_URL: http://gateway:8080/api, NEXT_PUBLIC_API_BASE_URL: http://localhost:18080/api }
     ports: ["15173:3000"]
-    depends_on: [gateway]
+    depends_on: { gateway: { condition: service_healthy } }
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.130.1
+    command: ["--config=/etc/otel/config.yml"]
+    volumes: ["./infra/observability/otel-collector.yml:/etc/otel/config.yml:ro"]
+    ports: ["4317:4317", "4318:4318", "9464:9464"]
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports: ["19090:9090"]
+
+  tempo:
+    image: grafana/tempo:2.8.2
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes: ["./infra/observability/tempo.yml:/etc/tempo.yml:ro", "tempo-data:/var/tempo"]
+
+  loki:
+    image: grafana/loki:3.5.2
+    command: ["-config.file=/etc/loki.yml"]
+    volumes: ["./infra/observability/loki.yml:/etc/loki.yml:ro", "loki-data:/loki"]
+
+  promtail:
+    image: grafana/promtail:3.5.2
+    command: ["-config.file=/etc/promtail.yml"]
+    volumes:
+      - ./infra/observability/promtail.yml:/etc/promtail.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on: [loki]
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    environment: { GF_SECURITY_ADMIN_USER: admin, GF_SECURITY_ADMIN_PASSWORD: techzone, GF_USERS_DEFAULT_THEME: light }
+    volumes:
+      - ./infra/observability/grafana:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["13000:3000"]
+    depends_on: [prometheus, tempo, loki]
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  prometheus-data:
+  tempo-data:
+  loki-data:
+  grafana-data:
