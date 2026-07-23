@@ -24,6 +24,7 @@ export default function LoginPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.code === 'EMAIL_EXISTS' ? '이미 가입된 이메일입니다.' : '이메일과 비밀번호를 확인해주세요.');
       saveSession(data);
+      if (data.user?.role === 'admin') { window.location.href = '/admin/'; return; }
       setSession(data);
       setStatus({ loading: false, message: '로그인되었습니다.' });
     } catch (error) { setStatus({ loading: false, message: error.message }); }
