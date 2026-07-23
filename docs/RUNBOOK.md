@@ -55,6 +55,16 @@ Windows 작업 경로에 한글이 포함되어 있어 `android/gradle.propertie
 
 1. Order가 `order.created`를 발행한다.
 2. Payment가 Mock 승인 후 `payment.approved`를 발행한다.
+
+## 결제 모드
+
+기본 Docker 실행은 Mock 결제입니다. Toss Payments Sandbox를 사용하려면 실행 전에 `TOSS_SECRET_KEY` 환경변수를 설정합니다.
+
+```bash
+TOSS_SECRET_KEY=test_sk_... docker compose up --build -d
+```
+
+프론트 주문서는 `/api/payments/confirm`을 호출하며, 키가 없으면 Mock 승인, 키가 있으면 Toss 승인 API를 사용합니다. 운영에서는 프론트 결제창에서 발급된 실제 `paymentKey`만 서버로 전달해야 합니다.
 3. Order가 `inventory.reserve`를 발행한다.
 4. Inventory가 재고를 예약하고 결과 이벤트를 발행한다.
 5. Order가 `confirmed` 또는 `cancelled`로 전환한다.
