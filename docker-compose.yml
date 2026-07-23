@@ -28,7 +28,7 @@ services:
   payment:
     <<: *service
     command: node backend/services/payment/server.js
-    environment: { PORT: 3005, DATABASE_URL: postgres://canvas:canvas@postgres:5432/payments, RABBIT_URL: amqp://rabbitmq:5672 }
+    environment: { PORT: 3005, DATABASE_URL: postgres://canvas:canvas@postgres:5432/payments, RABBIT_URL: amqp://rabbitmq:5672, TOSS_SECRET_KEY: "${TOSS_SECRET_KEY:-}" }
   inventory:
     <<: *service
     command: node backend/services/inventory/server.js

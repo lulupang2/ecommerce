@@ -48,6 +48,8 @@ await request(`/carts/${account.user.id}/items`, { method: 'POST', body: JSON.st
 const cart = await request(`/carts/${account.user.id}`);
 assert.equal(cart.items.length, 1);
 const order = await request('/orders', { method: 'POST', body: JSON.stringify({ userId: account.user.id, items: [{ productId: product.id, name: product.name, brand: product.brand, image: product.image, price: product.price, quantity: 1 }], shipping: { recipient: 'Integration Test', phone: '010-0000-0000', address: 'Seoul, Korea' } }) });
+const payment = await request('/payments/confirm', { method: 'POST', body: JSON.stringify({ orderId: order.id, amount: order.totalAmount, paymentKey: `integration_${order.id}`, order: { userId: account.user.id, items: [{ productId: product.id, name: product.name, brand: product.brand, image: product.image, price: product.price, quantity: 1 }] } }) });
+assert.equal(payment.status, 'approved');
 let result;
 for (let attempt = 0; attempt < 12; attempt += 1) {
   await new Promise(resolve => setTimeout(resolve, 500));
