@@ -26,6 +26,8 @@ assert.equal(forbidden.status, 403, 'customer must not access admin order list')
 const adminLogin = await request('/auth/login', { method: 'POST', body: JSON.stringify({ email: process.env.ADMIN_EMAIL || 'admin@techzone.local', password: process.env.ADMIN_PASSWORD || 'TechzoneAdmin123!' }) });
 assert.equal(adminLogin.user.role, 'admin');
 const adminHeaders = { 'content-type': 'application/json', authorization: `Bearer ${adminLogin.accessToken}` };
+const adminUsers = await request('/auth/users', { headers: adminHeaders });
+assert.ok(adminUsers.items.some(user => user.email === (process.env.ADMIN_EMAIL || 'admin@techzone.local')), 'admin member list must include seeded admin');
 const catalog = await request('/products');
 assert.ok(catalog.items.length >= 8, 'seed catalog must contain products');
 const product = catalog.items[0];
