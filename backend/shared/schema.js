@@ -1,4 +1,5 @@
-const { pgTable, uuid, text, integer, timestamp } = require('drizzle-orm/pg-core');
+const { pgTable, pgEnum, uuid, text, integer, timestamp } = require('drizzle-orm/pg-core');
+const orderStatus = pgEnum('order_status', ['pending', 'confirmed', 'preparing', 'shipped', 'delivered', 'cancelled']);
 
 const users = pgTable('users', {
   id: uuid('id').primaryKey(), email: text('email').notNull().unique(), passwordHash: text('password_hash').notNull(),
@@ -12,7 +13,7 @@ const cartItems = pgTable('cart_items', {
   userId: uuid('user_id').notNull(), productId: uuid('product_id').notNull(), name: text('name').notNull(), brand: text('brand').notNull(), image: text('image'), price: integer('price').notNull(), quantity: integer('quantity').notNull(),
 });
 const orders = pgTable('orders', {
-  id: uuid('id').primaryKey(), userId: uuid('user_id').notNull(), orderNumber: text('order_number').notNull().unique(), status: text('status').notNull(), totalAmount: integer('total_amount').notNull(), recipient: text('recipient').notNull(), phone: text('phone').notNull(), address: text('address').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  id: uuid('id').primaryKey(), userId: uuid('user_id').notNull(), orderNumber: text('order_number').notNull().unique(), status: orderStatus('status').notNull(), totalAmount: integer('total_amount').notNull(), recipient: text('recipient').notNull(), phone: text('phone').notNull(), address: text('address').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 const orderItems = pgTable('order_items', {
   id: uuid('id').primaryKey(), orderId: uuid('order_id').notNull(), productId: uuid('product_id').notNull(), name: text('name').notNull(), brand: text('brand').notNull(), image: text('image'), unitPrice: integer('unit_price').notNull(), quantity: integer('quantity').notNull(),
@@ -25,4 +26,4 @@ const payments = pgTable('payments', { id: uuid('id').primaryKey(), orderId: uui
 const mediaAssets = pgTable('media_assets', { id: uuid('id').primaryKey(), ownerId: uuid('owner_id'), contentType: text('content_type').notNull(), objectKey: text('object_key').notNull(), publicUrl: text('public_url').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow() });
 const searchEvents = pgTable('search_events', { id: uuid('id').primaryKey(), eventType: text('event_type').notNull(), receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow() });
 
-module.exports = { users, products, cartItems, orders, orderItems, notifications, stock, payments, mediaAssets, searchEvents };
+module.exports = { users, products, cartItems, orders, orderItems, notifications, stock, payments, mediaAssets, searchEvents, orderStatus };

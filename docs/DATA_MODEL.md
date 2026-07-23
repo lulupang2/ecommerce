@@ -46,6 +46,7 @@ erDiagram
 - `products.stock`은 상품 등록 시점의 초기/표시 재고 스냅샷입니다.
 - 실제 판매 가능 수량과 동시성 제어는 `stock.available_qty`가 담당합니다.
 - `stock.version`은 예약·관리자 수정 시 증가해 낙관적 동시성 추적에 사용합니다.
+- Catalog와 Inventory는 MSA에서 서로 다른 데이터베이스를 소유하므로 물리적 FK 대신 `products.id = stock.product_id` 논리 관계와 이벤트 검증으로 연결합니다.
 - 상품 상세 리치 콘텐츠는 현재 `products.note`에 HTML 문자열로 저장하며, 추후 별도 `product_contents` 테이블로 분리할 수 있습니다.
 - 이미지 바이너리는 DB에 저장하지 않고 `media_assets` 메타데이터와 MinIO 객체로 분리합니다.
 
