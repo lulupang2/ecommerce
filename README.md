@@ -8,7 +8,7 @@ TECHZONE은 한국어 테크·IT 기기 쇼핑몰을 주제로 만든 풀스택 
 - Mobile: Capacitor 8 Android
 - Backend: Node.js 22, Express 5
 - Data & Messaging: PostgreSQL 16, RabbitMQ
-- Infrastructure: Docker Compose, Nginx
+- Infrastructure: Docker Compose, Next.js standalone SSR
 - Storage: MinIO (S3-compatible presigned upload URL)
 - Operations: request ID logs, security headers, per-service rate limit, GitHub Actions CI
 
@@ -18,6 +18,7 @@ TECHZONE은 한국어 테크·IT 기기 쇼핑몰을 주제로 만든 풀스택 
 npm install
 docker compose up --build -d
 npm run test:integration
+npm run test:storefront
 ```
 
 - 웹: http://localhost:15173
@@ -37,6 +38,8 @@ npm run test:integration
 
 > 현재는 포트폴리오 MVP입니다. 실제 결제·객체 스토리지·API Gateway 인증·이벤트 outbox는 다음 단계의 운영 확장 항목입니다.
 ## 관리자 콘솔
+
+고객 스토어는 `/` CMS 홈에서 `/shop/` 탐색, `/products/[slug]/` 상세, variant 장바구니, 서버 견적·쿠폰, Mock 결제, 주문·배송 조회까지 연결됩니다. 웹은 standalone SSR, Android는 `CAPACITOR_BUILD=1` 정적 앱 셸을 사용합니다.
 
 운영 화면(`/admin/`)은 JWT의 `role=admin`만 접근할 수 있습니다. 로컬 Docker 환경에서는 다음 개발용 계정이 자동 시드됩니다.
 

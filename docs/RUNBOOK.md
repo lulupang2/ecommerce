@@ -26,12 +26,13 @@ docker compose ps
 ```bash
 npm run build
 npm run test:integration
+npm run test:storefront
+npm run build:mobile
 npm run mobile:sync
-cd android
-gradlew.bat assembleDebug
+.\android\gradlew.bat assembleDebug -p android
 ```
 
-통합 테스트는 health, 고객/관리자 접근 제어, 주문→결제→재고예약→출고→배송, 반품→환불, projection rebuild, 서버 테이블, 감사로그, viewer 쓰기 차단을 검증한다.
+통합 테스트는 health, 고객/관리자 접근 제어, 주문→결제→재고예약→출고→배송, 반품→환불, projection rebuild, 서버 테이블, 감사로그, viewer 쓰기 차단을 검증한다. 스토어 테스트는 CMS 예약 노출, 검색·필터, variant, 가격·쿠폰·배송비, 비회원 주문 격리를 검증한다.
 
 APK: `android/app/build/outputs/apk/debug/app-debug.apk`
 

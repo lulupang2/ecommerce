@@ -2,6 +2,7 @@ const { database } = require('../../shared/db');
 const { server, listen } = require('../../shared/http');
 const { publish, subscribe } = require('../../shared/bus');
 const { requireAuth, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
+const jwt = require('jsonwebtoken');
 
 const db = database('fulfillment');
 const app = server('fulfillment');
@@ -87,6 +88,20 @@ app.post('/fulfillment/returns', requireAuth, requireRole('admin'), requirePermi
   await db.query(`INSERT INTO returns(id,order_id,return_number,status,reason,refund_amount) VALUES($1,$2,$3,'requested',$4,$5)`, [id, req.body.orderId, returnNumber, req.body.reason, Number(req.body.refundAmount || 0)]);
   await publish('return.requested', { returnId: id, returnNumber, orderId: req.body.orderId, status: 'requested', reason: req.body.reason, refundAmount: Number(req.body.refundAmount || 0), actorId: req.user.sub });
   res.status(201).json({ id, returnNumber, status: 'requested' });
+});
+app.post('/fulfillment/returns/guest', async (req, res) => {
+  try {
+    const token = String(req.headers.authorization || '').replace(/^Bearer /, '');
+    const access = jwt.verify(token, process.env.JWT_SECRET || 'canvas-local-secret', { audience: 'techzone-guest-order' });
+    if (access.type !== 'guest_order' || access.orderId !== req.body.orderId) return res.status(403).json({ code: 'GUEST_ORDER_FORBIDDEN' });
+    const response = await fetch(`${process.env.ORDER_URL || 'http://localhost:3004'}/internal/orders`, { headers: internalHeaders() });
+    const order = (await response.json()).items.find(item => item.id === req.body.orderId);
+    if (!order || order.status !== 'delivered' || Date.now() - new Date(order.updated_at).getTime() > 7 * 86400000) return res.status(409).json({ code: 'RETURN_WINDOW_CLOSED' });
+    const id = crypto.randomUUID(); const returnNumber = `RET-${Date.now().toString().slice(-9)}`;
+    await db.query(`INSERT INTO returns(id,order_id,return_number,status,reason,refund_amount) VALUES($1,$2,$3,'requested',$4,$5)`, [id, req.body.orderId, returnNumber, req.body.reason || '비회원 반품 요청', Number(req.body.refundAmount || order.total_amount)]);
+    await publish('return.requested', { returnId: id, returnNumber, orderId: req.body.orderId, status: 'requested', reason: req.body.reason, refundAmount: Number(req.body.refundAmount || order.total_amount) });
+    res.status(201).json({ id, returnNumber, status: 'requested' });
+  } catch (error) { res.status(error.name === 'TokenExpiredError' ? 410 : 401).json({ code: error.name === 'TokenExpiredError' ? 'GUEST_TOKEN_EXPIRED' : 'GUEST_TOKEN_REQUIRED' }); }
 });
 app.patch('/fulfillment/returns/:id/status', requireAuth, requireRole('admin'), requirePermission('fulfillment.update'), async (req, res) => {
   const current = await db.query(`SELECT * FROM returns WHERE id=$1`, [req.params.id]);

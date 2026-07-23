@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   AlertTriangle, BarChart3, Bell, Boxes, ChevronDown, ClipboardList, FileClock, LayoutDashboard,
   Menu, Package, PackageCheck, PanelLeftClose, PanelLeftOpen, RotateCcw, Search, Settings,
-  ShoppingCart, Star, Truck, UserRound, Users, Warehouse, X,
+  ShoppingCart, Star, Truck, UserRound, Users, Warehouse, X, PanelsTopLeft, TicketPercent,
 } from 'lucide-react';
 import { readSession } from '@/lib/session';
 
@@ -23,6 +23,8 @@ const groups = [
   ] },
   { label: '상품·물류', items: [
     { href: '/admin/products/manage/', label: '상품 관리', icon: Package, permission: 'products.read' },
+    { href: '/admin/storefront/', label: '스토어 진열 CMS', icon: PanelsTopLeft, permission: 'products.read' },
+    { href: '/admin/coupons/', label: '쿠폰 관리', icon: TicketPercent, permission: 'orders.read' },
     { href: '/admin/inventory/', label: '재고 관리', icon: Boxes, permission: 'inventory.read' },
     { href: '/admin/procurement/', label: '공급사·발주', icon: ClipboardList, permission: 'inventory.read' },
   ] },

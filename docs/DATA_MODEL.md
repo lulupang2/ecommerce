@@ -57,6 +57,15 @@ erDiagram
 
 ## 핵심 제약
 
+### 스토어·CMS 확장
+
+- Catalog: `storefront_sections`, `storefront_section_products`, `product_questions`, `product_answers`, `wishlists`
+- Cart: `(user_id, variant_id)` 복합 키와 SKU·옵션·서버 단가 snapshot
+- Order: `coupons`, `coupon_redemptions`, 배송비·쿠폰·결제수단·비회원 여부 snapshot
+- 판매 단위는 `product_variants`이며 SKU, 모델번호, 바코드, 옵션, 정가, 판매가를 소유한다.
+- coupon redemption은 `(coupon_id, owner_id)` 유일성으로 기본 1회 사용을 보장한다.
+- storefront section은 게시 상태, 시작·종료 시각, 진열 순서를 만족할 때만 공개된다.
+
 - `product_variants.sku`, `orders.order_number`, `shipments.tracking_number`, 각 업무 번호는 unique
 - 수량과 금액은 0 이상, 주문·발주 품목 수량은 1 이상
 - 예약량은 가용량을 초과할 수 없고 이동은 출발·도착 movement를 한 쌍으로 기록

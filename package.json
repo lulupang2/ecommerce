@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:mobile": "node scripts/mobile-build.mjs",
     "start": "next start",
     "preview": "next start",
     "backend:auth": "node backend/services/auth/server.js",
@@ -21,6 +22,7 @@
     "ms:up": "docker compose up --build",
     "mobile:sync": "npx cap sync",
     "test:integration": "node scripts/integration-test.mjs",
+    "test:storefront": "node scripts/storefront-integration-test.mjs",
     "db:check": "drizzle-kit check",
     "db:generate": "drizzle-kit generate"
   },

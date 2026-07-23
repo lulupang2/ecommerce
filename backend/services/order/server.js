@@ -4,6 +4,7 @@ const { orders, orderItems } = require('../../shared/schema');
 const { server, listen } = require('../../shared/http');
 const { publish, subscribe } = require('../../shared/bus');
 const { requireAuth, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
+const jwt = require('jsonwebtoken');
 
 const db = database('orders');
 const app = server('order');
@@ -20,8 +21,47 @@ async function init() {
   await db.query(`CREATE TABLE IF NOT EXISTS orders(id UUID PRIMARY KEY,user_id UUID NOT NULL,order_number TEXT UNIQUE NOT NULL,status order_status NOT NULL,payment_status payment_status NOT NULL DEFAULT 'pending',fulfillment_status fulfillment_status NOT NULL DEFAULT 'unfulfilled',subtotal_amount INTEGER NOT NULL DEFAULT 0,discount_amount INTEGER NOT NULL DEFAULT 0,tax_amount INTEGER NOT NULL DEFAULT 0,total_amount INTEGER NOT NULL CHECK(total_amount>=0),recipient TEXT NOT NULL,phone TEXT NOT NULL,address TEXT NOT NULL,memo TEXT,created_at TIMESTAMPTZ DEFAULT now(),updated_at TIMESTAMPTZ DEFAULT now())`);
   await db.query(`CREATE TABLE IF NOT EXISTS order_items(id UUID PRIMARY KEY,order_id UUID NOT NULL REFERENCES orders(id),product_id UUID NOT NULL,variant_id UUID,sku TEXT,name TEXT NOT NULL,brand TEXT NOT NULL,image TEXT,unit_price INTEGER NOT NULL,discount_amount INTEGER NOT NULL DEFAULT 0,tax_amount INTEGER NOT NULL DEFAULT 0,quantity INTEGER NOT NULL CHECK(quantity>0))`);
   await db.query(`CREATE TABLE IF NOT EXISTS order_addresses(id UUID PRIMARY KEY,order_id UUID NOT NULL,type TEXT NOT NULL,recipient TEXT NOT NULL,phone TEXT NOT NULL,postal_code TEXT,address1 TEXT NOT NULL,address2 TEXT)`);
+  await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_fee INTEGER NOT NULL DEFAULT 0`);
+  await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code TEXT`);
+  await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS guest_order BOOLEAN NOT NULL DEFAULT false`);
+  await db.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method TEXT`);
+  await db.query(`CREATE TABLE IF NOT EXISTS coupons(id UUID PRIMARY KEY,code TEXT UNIQUE NOT NULL,type TEXT NOT NULL,value INTEGER NOT NULL,min_order_amount INTEGER NOT NULL DEFAULT 0,max_discount_amount INTEGER,starts_at TIMESTAMPTZ,ends_at TIMESTAMPTZ,status TEXT NOT NULL DEFAULT 'active',usage_limit INTEGER,per_customer_limit INTEGER NOT NULL DEFAULT 1,created_at TIMESTAMPTZ DEFAULT now())`);
+  await db.query(`CREATE TABLE IF NOT EXISTS coupon_redemptions(id UUID PRIMARY KEY,coupon_id UUID NOT NULL,order_id UUID NOT NULL,owner_id UUID NOT NULL,discount_amount INTEGER NOT NULL,created_at TIMESTAMPTZ DEFAULT now(),UNIQUE(coupon_id,owner_id))`);
+  await db.query(`INSERT INTO coupons(id,code,type,value,min_order_amount,max_discount_amount,status,usage_limit,per_customer_limit) VALUES($1,'TECHZONE10','percent',10,300000,50000,'active',10000,1) ON CONFLICT(code) DO NOTHING`, [crypto.randomUUID()]);
   await seedOrders();
   await subscribe('order', ['payment.approved', 'payment.refunded', 'inventory.reserved', 'inventory.failed', 'shipment.created', 'shipment.shipped', 'shipment.delivered', 'return.received'], onEvent);
+}
+
+const internalHeaders = () => ({ 'x-internal-key': process.env.INTERNAL_API_KEY || 'techzone-internal' });
+const jwtSecret = () => process.env.JWT_SECRET || 'canvas-local-secret';
+const normalizePhone = value => String(value || '').replace(/\D/g, '');
+async function calculateQuote(items, couponCode) {
+  if (!Array.isArray(items) || !items.length) throw Object.assign(new Error('INVALID_ITEMS'), { status: 400 });
+  const ids = items.map(item => item.variantId).filter(Boolean);
+  if (ids.length !== items.length) throw Object.assign(new Error('VARIANT_REQUIRED'), { status: 400 });
+  const response = await fetch(`${process.env.CATALOG_URL || 'http://localhost:3002'}/internal/variants?ids=${ids.join(',')}`, { headers: internalHeaders() });
+  if (!response.ok) throw Object.assign(new Error('CATALOG_UNAVAILABLE'), { status: 503 });
+  const variants = (await response.json()).items || [];
+  const lines = items.map(item => {
+    const variant = variants.find(value => value.variant_id === item.variantId);
+    const quantity = Number(item.quantity);
+    if (!variant || variant.status !== 'active' || variant.product_status !== 'published') throw Object.assign(new Error('PRODUCT_UNAVAILABLE'), { status: 409 });
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) throw Object.assign(new Error('INVALID_QUANTITY'), { status: 400 });
+    return { productId: variant.product_id, variantId: variant.variant_id, sku: variant.sku, name: variant.name, brand: variant.brand, image: variant.image, optionValues: variant.option_values, price: Number(variant.sale_price), listPrice: Number(variant.list_price), quantity };
+  });
+  const subtotal = lines.reduce((sum, line) => sum + line.price * line.quantity, 0);
+  let discount = 0; let coupon = null;
+  if (couponCode) {
+    const result = await db.query(`SELECT * FROM coupons WHERE upper(code)=upper($1) AND status='active' AND (starts_at IS NULL OR starts_at<=now()) AND (ends_at IS NULL OR ends_at>=now())`, [couponCode]);
+    coupon = result.rows[0];
+    if (!coupon) throw Object.assign(new Error('INVALID_COUPON'), { status: 400 });
+    if (subtotal < Number(coupon.min_order_amount)) throw Object.assign(new Error('COUPON_MIN_ORDER'), { status: 409 });
+    discount = coupon.type === 'percent' ? Math.floor(subtotal * Number(coupon.value) / 100) : Number(coupon.value);
+    if (coupon.max_discount_amount) discount = Math.min(discount, Number(coupon.max_discount_amount));
+  }
+  const shippingFee = subtotal >= 80000 ? 0 : 3000;
+  const total = subtotal - discount + shippingFee;
+  return { lines, subtotalAmount: subtotal, discountAmount: discount, shippingFee, taxAmount: Math.round(total / 11), totalAmount: total, coupon: coupon ? { id: coupon.id, code: coupon.code } : null };
 }
 
 async function seedOrders() {
@@ -83,20 +123,54 @@ async function transitionFromEvent(orderId, status, fulfillmentStatus) {
 }
 function orderEvent(order) { return { orderId: order.id, orderNumber: order.order_number, userId: order.user_id, status: order.status, paymentStatus: order.payment_status, fulfillmentStatus: order.fulfillment_status, totalAmount: Number(order.total_amount), recipient: order.recipient, createdAt: order.created_at, updatedAt: order.updated_at }; }
 
-app.post('/orders', async (req, res) => {
-  const { userId, items, shipping } = req.body;
-  if (!userId || !Array.isArray(items) || !items.length || !shipping?.recipient || !shipping?.phone || !shipping?.address) return res.status(400).json({ code: 'INVALID_ORDER' });
-  if (items.some(item => !item.productId || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) <= 0 || !Number.isInteger(Number(item.price)) || Number(item.price) < 0)) return res.status(400).json({ code: 'INVALID_ORDER_ITEM' });
-  const subtotal = items.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
-  const discount = 0; const total = subtotal - discount; const tax = Math.round(total / 11);
-  const id = crypto.randomUUID(); const orderNumber = `TZ-${new Date().getFullYear()}-${Date.now().toString().slice(-8)}`;
-  await db.orm.insert(orders).values({ id, userId, orderNumber, status: 'pending', paymentStatus: 'pending', fulfillmentStatus: 'unfulfilled', subtotalAmount: subtotal, discountAmount: discount, taxAmount: tax, totalAmount: total, recipient: shipping.recipient, phone: shipping.phone, address: shipping.address, memo: shipping.memo });
-  await db.orm.insert(orderItems).values(items.map(item => ({ id: crypto.randomUUID(), orderId: id, productId: item.productId, variantId: item.variantId, sku: item.sku, name: item.name, brand: item.brand, image: item.image, unitPrice: Number(item.price), discountAmount: 0, taxAmount: Math.round((Number(item.price) * Number(item.quantity)) / 11), quantity: Number(item.quantity) })));
-  await db.query(`INSERT INTO order_addresses(id,order_id,type,recipient,phone,postal_code,address1,address2) VALUES($1,$2,'shipping',$3,$4,$5,$6,$7)`, [crypto.randomUUID(), id, shipping.recipient, shipping.phone, shipping.postalCode || null, shipping.address, shipping.address2 || null]);
-  const payload = { orderId: id, orderNumber, userId, items, subtotalAmount: subtotal, discountAmount: discount, taxAmount: tax, totalAmount: total, status: 'pending', paymentStatus: 'pending', fulfillmentStatus: 'unfulfilled', recipient: shipping.recipient, createdAt: new Date().toISOString() };
-  await publish('order.created', payload);
-  res.status(201).json({ id, orderNumber, status: 'pending', totalAmount: total });
+app.post('/checkout/quote', async (req, res) => {
+  try {
+    const quote = await calculateQuote(req.body.items, req.body.couponCode);
+    const quoteToken = jwt.sign({ type: 'checkout_quote', items: req.body.items, couponCode: quote.coupon?.code || null, subtotalAmount: quote.subtotalAmount, discountAmount: quote.discountAmount, shippingFee: quote.shippingFee, totalAmount: quote.totalAmount }, jwtSecret(), { expiresIn: '10m', audience: 'techzone-checkout' });
+    res.json({ ...quote, quoteToken, expiresIn: 600 });
+  } catch (error) { res.status(error.status || 500).json({ code: error.message }); }
 });
+app.get('/coupons/public', async (_, res) => { const rows = await db.query(`SELECT code,type,value,min_order_amount,max_discount_amount,ends_at FROM coupons WHERE status='active' AND (starts_at IS NULL OR starts_at<=now()) AND (ends_at IS NULL OR ends_at>=now()) ORDER BY created_at`); res.json({ items: rows.rows }); });
+app.get('/coupons/admin', requireAuth, requireRole('admin'), requirePermission('orders.read'), async (_, res) => { const rows = await db.query(`SELECT c.*,count(r.id)::int redemption_count,coalesce(sum(r.discount_amount),0)::int discount_total FROM coupons c LEFT JOIN coupon_redemptions r ON r.coupon_id=c.id GROUP BY c.id ORDER BY c.created_at DESC`); res.json({ items: rows.rows }); });
+app.post('/coupons/admin', requireAuth, requireRole('admin'), requirePermission('orders.update'), async (req, res) => { const id=crypto.randomUUID(); await db.query(`INSERT INTO coupons(id,code,type,value,min_order_amount,max_discount_amount,starts_at,ends_at,status,usage_limit,per_customer_limit) VALUES($1,upper($2),$3,$4,$5,$6,$7,$8,$9,$10,1)`,[id,req.body.code,req.body.type||'percent',Number(req.body.value),Number(req.body.minOrderAmount||0),req.body.maxDiscountAmount?Number(req.body.maxDiscountAmount):null,req.body.startsAt||null,req.body.endsAt||null,req.body.status||'active',req.body.usageLimit?Number(req.body.usageLimit):null]);res.status(201).json({id}); });
+app.patch('/coupons/admin/:id', requireAuth, requireRole('admin'), requirePermission('orders.update'), async (req,res)=>{const result=await db.query(`UPDATE coupons SET status=COALESCE($2,status),ends_at=COALESCE($3,ends_at) WHERE id=$1 RETURNING *`,[req.params.id,req.body.status||null,req.body.endsAt||null]);res.json(result.rows[0]);});
+
+app.post('/orders', async (req, res) => {
+  const { userId, shipping } = req.body;
+  if (!userId || !shipping?.recipient || !shipping?.phone || !shipping?.address) return res.status(400).json({ code: 'INVALID_ORDER' });
+  let quote; let items;
+  try {
+    if (req.body.quoteToken) {
+      const token = jwt.verify(req.body.quoteToken, jwtSecret(), { audience: 'techzone-checkout' });
+      quote = await calculateQuote(token.items, token.couponCode);
+      if (quote.totalAmount !== token.totalAmount || quote.discountAmount !== token.discountAmount) return res.status(409).json({ code: 'PRICE_CHANGED', quote });
+      items = quote.lines;
+    } else {
+      items = req.body.items;
+      if (!Array.isArray(items) || !items.length || items.some(item => !item.productId || !Number.isInteger(Number(item.quantity)) || Number(item.quantity)<=0 || !Number.isInteger(Number(item.price)) || Number(item.price)<0)) return res.status(400).json({code:'INVALID_ORDER_ITEM'});
+      const subtotal=items.reduce((sum,item)=>sum+Number(item.price)*Number(item.quantity),0);
+      quote={subtotalAmount:subtotal,discountAmount:0,shippingFee:0,totalAmount:subtotal,taxAmount:Math.round(subtotal/11),coupon:null};
+    }
+  } catch(error) { return res.status(error.name==='TokenExpiredError'?410:(error.status||400)).json({code:error.name==='TokenExpiredError'?'QUOTE_EXPIRED':error.message}); }
+  if (quote.coupon) {
+    const used=await db.query(`SELECT 1 FROM coupon_redemptions WHERE coupon_id=$1 AND owner_id=$2`,[quote.coupon.id,userId]);
+    if(used.rows[0]) return res.status(409).json({code:'COUPON_ALREADY_USED'});
+  }
+  const id=crypto.randomUUID(),orderNumber=`TZ-${new Date().getFullYear()}-${Date.now().toString().slice(-8)}`;
+  await db.query(`INSERT INTO orders(id,user_id,order_number,status,payment_status,fulfillment_status,subtotal_amount,discount_amount,shipping_fee,tax_amount,total_amount,coupon_code,guest_order,payment_method,recipient,phone,address,memo) VALUES($1,$2,$3,'pending','pending','unfulfilled',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,[id,userId,orderNumber,quote.subtotalAmount,quote.discountAmount,quote.shippingFee,quote.taxAmount,quote.totalAmount,quote.coupon?.code||null,Boolean(req.body.guestOrder),req.body.paymentMethod||'card',shipping.recipient,shipping.phone,shipping.address,shipping.memo||null]);
+  for(const item of items) await db.query(`INSERT INTO order_items(id,order_id,product_id,variant_id,sku,name,brand,image,unit_price,discount_amount,tax_amount,quantity) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11)`,[crypto.randomUUID(),id,item.productId,item.variantId||null,item.sku||null,item.name,item.brand,item.image,Number(item.price),Math.round(Number(item.price)*Number(item.quantity)/11),Number(item.quantity)]);
+  await db.query(`INSERT INTO order_addresses(id,order_id,type,recipient,phone,postal_code,address1,address2) VALUES($1,$2,'shipping',$3,$4,$5,$6,$7)`,[crypto.randomUUID(),id,shipping.recipient,shipping.phone,shipping.postalCode||null,shipping.address,shipping.address2||null]);
+  if(quote.coupon) await db.query(`INSERT INTO coupon_redemptions(id,coupon_id,order_id,owner_id,discount_amount) VALUES($1,$2,$3,$4,$5)`,[crypto.randomUUID(),quote.coupon.id,id,userId,quote.discountAmount]);
+  const payload={orderId:id,orderNumber,userId,items,subtotalAmount:quote.subtotalAmount,discountAmount:quote.discountAmount,shippingFee:quote.shippingFee,taxAmount:quote.taxAmount,totalAmount:quote.totalAmount,paymentMethod:req.body.paymentMethod||'card',status:'pending',paymentStatus:'pending',fulfillmentStatus:'unfulfilled',recipient:shipping.recipient,createdAt:new Date().toISOString()};
+  await publish('order.created',payload);
+  res.status(201).json({id,orderNumber,status:'pending',totalAmount:quote.totalAmount,guestOrderToken:req.body.guestOrder?issueGuestToken(id,orderNumber,shipping.phone):undefined});
+});
+
+function issueGuestToken(orderId,orderNumber,phone){return jwt.sign({type:'guest_order',orderId,orderNumber,phone:normalizePhone(phone)},jwtSecret(),{expiresIn:'15m',audience:'techzone-guest-order'});}
+function verifyGuest(req,orderId){try{const token=String(req.headers.authorization||'').replace(/^Bearer /,'');const payload=jwt.verify(token,jwtSecret(),{audience:'techzone-guest-order'});return payload.type==='guest_order'&&payload.orderId===orderId?payload:null;}catch{return null;}}
+app.post('/orders/guest/access',async(req,res)=>{const result=await db.query(`SELECT id,order_number,phone FROM orders WHERE order_number=$1 AND guest_order=true`,[req.body.orderNumber]);const order=result.rows[0];if(!order||normalizePhone(order.phone)!==normalizePhone(req.body.phone))return res.status(401).json({code:'GUEST_ORDER_AUTH_FAILED'});res.json({accessToken:issueGuestToken(order.id,order.order_number,order.phone),expiresIn:900,orderId:order.id});});
+app.get('/orders/guest/:id',async(req,res)=>{if(!verifyGuest(req,req.params.id))return res.status(401).json({code:'GUEST_TOKEN_REQUIRED'});const result=await orderDetail(req.params.id);if(!result)return res.status(404).json({code:'NOT_FOUND'});res.json(result);});
+app.post('/orders/guest/:id/cancel',async(req,res)=>{if(!verifyGuest(req,req.params.id))return res.status(401).json({code:'GUEST_TOKEN_REQUIRED'});const result=await db.query(`UPDATE orders SET status='cancelled',payment_status='cancelled',updated_at=now() WHERE id=$1 AND status IN('pending','confirmed') RETURNING *`,[req.params.id]);if(!result.rows[0])return res.status(409).json({code:'ORDER_NOT_CANCELLABLE'});await publish('order.cancelled',{...orderEvent(result.rows[0]),reason:req.body.reason||'비회원 주문 취소'});res.json({id:req.params.id,status:'cancelled'});});
 app.get('/orders', async (req, res, next) => {
   if (!req.query.userId) return requireAuth(req, res, () => requireRole('admin')(req, res, next));
   next();
@@ -115,16 +189,16 @@ app.patch('/orders/:id/status', requireAuth, requireRole('admin'), requirePermis
   res.json({ id: result.rows[0].id, status: result.rows[0].status });
 });
 app.get('/orders/:id', async (req, res) => {
-  const rows = await db.orm.select().from(orders).where(eq(orders.id, req.params.id)).limit(1);
-  if (!rows[0]) return res.status(404).json({ code: 'NOT_FOUND' });
-  const items = await db.orm.select().from(orderItems).where(eq(orderItems.orderId, req.params.id));
-  const order = rows[0];
-  res.json({ id: order.id, user_id: order.userId, order_number: order.orderNumber, status: order.status, payment_status: order.paymentStatus, fulfillment_status: order.fulfillmentStatus, subtotal_amount: order.subtotalAmount, discount_amount: order.discountAmount, tax_amount: order.taxAmount, total_amount: order.totalAmount, recipient: order.recipient, phone: order.phone, address: order.address, memo: order.memo, created_at: order.createdAt, updated_at: order.updatedAt, items: items.map(item => ({ id: item.id, order_id: item.orderId, product_id: item.productId, variant_id: item.variantId, sku: item.sku, name: item.name, brand: item.brand, image: item.image, unit_price: item.unitPrice, quantity: item.quantity })) });
+  const result=await orderDetail(req.params.id);
+  if(!result)return res.status(404).json({code:'NOT_FOUND'});
+  res.json(result);
 });
+async function orderDetail(id){const rows=await db.query(`SELECT * FROM orders WHERE id=$1`,[id]);if(!rows.rows[0])return null;const items=await db.query(`SELECT * FROM order_items WHERE order_id=$1 ORDER BY id`,[id]);const order=rows.rows[0];return {...order,items:items.rows};}
 app.get('/internal/orders', requireInternal, async (_, res) => {
   const result = await db.query(`SELECT o.*,count(i.id)::int item_count,min(i.image) image FROM orders o LEFT JOIN order_items i ON i.order_id=o.id GROUP BY o.id ORDER BY o.created_at DESC`);
   res.json({ items: result.rows });
 });
 app.get('/internal/orders/:id/items', requireInternal, async (req, res) => { const result = await db.query(`SELECT * FROM order_items WHERE order_id=$1`, [req.params.id]); res.json({ items: result.rows }); });
+app.get('/internal/users/:id/purchases',requireInternal,async(req,res)=>{const result=await db.query(`SELECT DISTINCT i.product_id FROM orders o JOIN order_items i ON i.order_id=o.id WHERE o.user_id=$1 AND o.status='delivered'`,[req.params.id]);res.json({productIds:result.rows.map(row=>row.product_id)});});
 
 init().then(() => listen(app, 'order')).catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,0 +1,5 @@
+import ProductDetailView from '@/components/store/product-detail-view';
+const slugs=['nova-book-air-14','orbit-pro-x','sonic-max-anc','arc-mechanical-75','home-mini-beam','pixel-watch-s','dock-one','frame-4k'];
+export function generateStaticParams(){return slugs.map(slug=>({slug}));}
+export async function generateMetadata({params}){const{slug}=await params;try{const base=process.env.INTERNAL_API_BASE_URL||'http://gateway:8080/api';const product=await fetch(`${base}/products/by-slug/${slug}`,{cache:'no-store'}).then(r=>r.json());return{title:`${product.name} | TECHZONE`,description:product.note,alternates:{canonical:`/products/${slug}/`},openGraph:{images:[product.image]}};}catch{return{title:'상품 상세 | TECHZONE'};}}
+export default async function Page({params}){const{slug}=await params;return <><ProductDetailView slug={slug}/><script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify({'@context':'https://schema.org','@type':'Product',name:slug,url:`/products/${slug}/`})}}/></>;}

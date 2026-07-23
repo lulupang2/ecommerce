@@ -13,7 +13,7 @@ async function init() {
   await db.query(`DO $$ BEGIN CREATE TYPE payment_status AS ENUM ('pending','approved','partially_refunded','refunded','cancelled','failed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
   await db.query(`CREATE TABLE IF NOT EXISTS payments(id UUID PRIMARY KEY,order_id UUID UNIQUE NOT NULL,status payment_status NOT NULL,amount INTEGER NOT NULL CHECK(amount>=0),refunded_amount INTEGER NOT NULL DEFAULT 0 CHECK(refunded_amount>=0),provider TEXT NOT NULL,payment_key TEXT,approved_at TIMESTAMPTZ)`);
   await db.query(`CREATE TABLE IF NOT EXISTS payment_transactions(id UUID PRIMARY KEY,payment_id UUID NOT NULL,order_id UUID NOT NULL,type TEXT NOT NULL,status TEXT NOT NULL,amount INTEGER NOT NULL CHECK(amount>=0),reason TEXT,created_at TIMESTAMPTZ DEFAULT now())`);
-  await subscribe('payment', ['order.created'], async event => { if (!process.env.TOSS_SECRET_KEY) await approve(event.payload, 'mock', `mock_${event.payload.orderId}`); });
+  await subscribe('payment', ['order.created'], async event => { if (!process.env.TOSS_SECRET_KEY) await approve(event.payload, event.payload.paymentMethod || 'card', `mock_${event.payload.orderId}`); });
 }
 async function approve(payload, provider, paymentKey) {
   const existing = await db.query(`SELECT * FROM payments WHERE order_id=$1`, [payload.orderId]);
@@ -30,8 +30,9 @@ app.post('/payments/confirm', async (req, res) => {
   if (!orderId || !Number.isInteger(Number(amount)) || Number(amount) < 0) return res.status(400).json({ code: 'INVALID_PAYMENT' });
   try {
     if (!process.env.TOSS_SECRET_KEY) {
-      await approve({ ...order, orderId, totalAmount: Number(amount) }, 'mock', paymentKey || `mock_${orderId}`);
-      return res.json({ status: 'approved', provider: 'mock', orderId });
+      const provider=req.body.provider||req.body.method||'card';
+      await approve({ ...order, orderId, totalAmount: Number(amount) }, provider, paymentKey || `mock_${orderId}`);
+      return res.json({ status: 'approved', provider, orderId });
     }
     const response = await fetch('https://api.tosspayments.com/v1/payments/confirm', { method: 'POST', headers: { authorization: `Basic ${Buffer.from(`${process.env.TOSS_SECRET_KEY}:`).toString('base64')}`, 'content-type': 'application/json' }, body: JSON.stringify({ paymentKey, orderId, amount: Number(amount) }) });
     const data = await response.json();

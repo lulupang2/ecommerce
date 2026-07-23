@@ -70,6 +70,23 @@ sequenceDiagram
 
 ## 보안과 신뢰성
 
+### Storefront 읽기·구매 흐름
+
+```mermaid
+flowchart LR
+  CMS["Catalog CMS"] --> Web["Next.js 홈·목록·상세"]
+  Web --> Quote["Order quote"]
+  Quote --> Catalog["variant 가격 재검증"]
+  Quote --> Coupon["쿠폰·배송비 계산"]
+  Quote --> Order["주문 생성"]
+  Order --> Payment["Mock payment"]
+  Payment --> Inventory["재고 예약"]
+  Inventory --> Fulfillment["출고·배송·반품"]
+```
+
+- 웹 컨테이너는 standalone Node 서버, Capacitor는 `out/` 정적 앱 셸을 사용한다.
+- 동적 웹 라우트와 query 기반 앱 라우트는 같은 화면 컴포넌트를 공유한다.
+
 - JWT에는 역할과 권한을 포함하며 API마다 역할과 세부 permission을 함께 검사한다.
 - 내부 rebuild API는 `x-internal-key`로 외부 요청과 분리한다.
 - 상태 전이는 허용된 방향만 지원하며 재고·환불은 DB 제약과 조건부 갱신으로 불변식을 지킨다.

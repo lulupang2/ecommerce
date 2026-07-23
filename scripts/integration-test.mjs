@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-const base = process.env.API_BASE || 'http://localhost:18080/api';
+const base = process.env.API_BASE || 'http://127.0.0.1:18080/api';
 async function request(path, options = {}) {
   const response = await fetch(`${base}${path}`, { headers: { 'content-type': 'application/json' }, ...options });
   const text = await response.text();
@@ -79,6 +79,13 @@ assert.ok(shipment, 'confirmed order must create a shipment');
 await request(`/fulfillment/shipments/${shipment.shipment_id}/status`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ status: 'packed', reason: 'integration packing' }) });
 await request(`/fulfillment/shipments/${shipment.shipment_id}/status`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ status: 'shipped', trackingNumber: `TEST${Date.now()}`, reason: 'integration shipping' }) });
 await request(`/fulfillment/shipments/${shipment.shipment_id}/status`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ status: 'delivered', reason: 'integration delivered' }) });
+for (let attempt = 0; attempt < 10; attempt += 1) {
+  await new Promise(resolve => setTimeout(resolve, 250));
+  const delivered = await request(`/orders/${order.id}`);
+  if (delivered.status === 'delivered') break;
+}
+const review = await request(`/products/${product.id}/reviews`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${login.accessToken}` }, body: JSON.stringify({ rating: 5, body: '통합 테스트 구매 인증 리뷰' }) });
+assert.equal(review.status, 'pending', 'delivered purchaser may submit a review for moderation');
 const createdReturn = await request('/fulfillment/returns', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ orderId: order.id, reason: 'integration return', refundAmount: order.totalAmount }) });
 await request(`/fulfillment/returns/${createdReturn.id}/status`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ status: 'approved', reason: 'integration approved' }) });
 await request(`/fulfillment/returns/${createdReturn.id}/status`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ status: 'received', reason: 'integration received' }) });

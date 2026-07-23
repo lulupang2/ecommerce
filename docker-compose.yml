@@ -22,7 +22,7 @@ services:
   catalog:
     <<: *service
     command: node backend/services/catalog/server.js
-    environment: { PORT: 3002, DATABASE_URL: postgres://canvas:canvas@postgres:5432/catalog, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal }
+    environment: { PORT: 3002, DATABASE_URL: postgres://canvas:canvas@postgres:5432/catalog, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, INTERNAL_API_KEY: techzone-internal, ORDER_URL: http://order:3004 }
   cart:
     <<: *service
     command: node backend/services/cart/server.js
@@ -77,5 +77,6 @@ services:
     depends_on: [auth, catalog, cart, order, payment, inventory, notification, search, media, fulfillment, procurement, admin]
   web:
     build: { context: . , dockerfile: frontend.Dockerfile }
-    ports: ["15173:80"]
+    environment: { PORT: 3000, INTERNAL_API_BASE_URL: http://gateway:8080/api, NEXT_PUBLIC_API_BASE_URL: http://localhost:18080/api }
+    ports: ["15173:3000"]
     depends_on: [gateway]
