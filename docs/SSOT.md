@@ -54,7 +54,7 @@
 - `POST /carts/:userId/items`, `PATCH /carts/:userId/items/:productId`, `DELETE /carts/:userId`
 - `POST /orders`, `GET /orders/:id`
 - `GET /payments/:orderId`, `GET /inventory/:productId`
-- `GET /notifications/:userId`, `POST /media/upload-url`
+- `GET /notifications/:userId`, `POST /media/upload-url` (관리자 인증 필요)
 
 ## 5. 이벤트 계약
 
