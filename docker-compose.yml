@@ -10,13 +10,13 @@ services:
   auth: &service
     build: { context: . , dockerfile: backend/Dockerfile }
     command: node backend/services/auth/server.js
-    environment: { PORT: 3001, DATABASE_URL: postgres://canvas:canvas@postgres:5432/auth, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret }
+    environment: { PORT: 3001, DATABASE_URL: postgres://canvas:canvas@postgres:5432/auth, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret, ADMIN_EMAIL: admin@techzone.local, ADMIN_PASSWORD: TechzoneAdmin123!, ADMIN_NAME: TECHZONE Admin }
     depends_on: { postgres: { condition: service_healthy }, rabbitmq: { condition: service_healthy } }
     healthcheck: { test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$${PORT}/health >/dev/null || exit 1"], interval: 5s, timeout: 3s, retries: 12, start_period: 5s }
   catalog:
     <<: *service
     command: node backend/services/catalog/server.js
-    environment: { PORT: 3002, DATABASE_URL: postgres://canvas:canvas@postgres:5432/catalog, RABBIT_URL: amqp://rabbitmq:5672 }
+    environment: { PORT: 3002, DATABASE_URL: postgres://canvas:canvas@postgres:5432/catalog, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret }
   cart:
     <<: *service
     command: node backend/services/cart/server.js
@@ -24,7 +24,7 @@ services:
   order:
     <<: *service
     command: node backend/services/order/server.js
-    environment: { PORT: 3004, DATABASE_URL: postgres://canvas:canvas@postgres:5432/orders, RABBIT_URL: amqp://rabbitmq:5672 }
+    environment: { PORT: 3004, DATABASE_URL: postgres://canvas:canvas@postgres:5432/orders, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret }
   payment:
     <<: *service
     command: node backend/services/payment/server.js
@@ -32,7 +32,7 @@ services:
   inventory:
     <<: *service
     command: node backend/services/inventory/server.js
-    environment: { PORT: 3006, DATABASE_URL: postgres://canvas:canvas@postgres:5432/inventory, RABBIT_URL: amqp://rabbitmq:5672 }
+    environment: { PORT: 3006, DATABASE_URL: postgres://canvas:canvas@postgres:5432/inventory, RABBIT_URL: amqp://rabbitmq:5672, JWT_SECRET: canvas-local-secret }
   notification:
     <<: *service
     command: node backend/services/notification/server.js

@@ -34,3 +34,11 @@ npm run test:integration
 회원가입/로그인 → 상품 탐색 → 장바구니 → 주문 생성 → Mock 결제 승인 → 재고 예약 → 주문 확정 → 알림 및 주문 내역 조회
 
 > 현재는 포트폴리오 MVP입니다. 실제 결제·객체 스토리지·API Gateway 인증·이벤트 outbox는 다음 단계의 운영 확장 항목입니다.
+## 관리자 콘솔
+
+운영 화면(`/admin/`)은 JWT의 `role=admin`만 접근할 수 있습니다. 로컬 Docker 환경에서는 다음 개발용 계정이 자동 시드됩니다.
+
+- 이메일: `admin@techzone.local`
+- 비밀번호: `TechzoneAdmin123!`
+
+공개 회원가입은 항상 `customer` 권한으로 생성됩니다. 운영 배포 전에는 반드시 `ADMIN_PASSWORD`와 `JWT_SECRET`을 안전한 시크릿으로 교체하세요.
