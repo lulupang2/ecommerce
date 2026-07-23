@@ -3,7 +3,7 @@ const app = server('gateway');
 const targets = {
   auth: process.env.AUTH_URL || 'http://localhost:3001', catalog: process.env.CATALOG_URL || 'http://localhost:3002', cart: process.env.CART_URL || 'http://localhost:3003', order: process.env.ORDER_URL || 'http://localhost:3004', payment: process.env.PAYMENT_URL || 'http://localhost:3005', inventory: process.env.INVENTORY_URL || 'http://localhost:3006', notification: process.env.NOTIFICATION_URL || 'http://localhost:3007', search: process.env.SEARCH_URL || 'http://localhost:3008', media: process.env.MEDIA_URL || 'http://localhost:3009',
 };
-const routes = [{prefix:'/api/auth',service:'auth'}, {prefix:'/api/products',service:'catalog'}, {prefix:'/api/carts',service:'cart'}, {prefix:'/api/orders',service:'order'}, {prefix:'/api/payments',service:'payment'}, {prefix:'/api/inventory',service:'inventory'}, {prefix:'/api/notifications',service:'notification'}, {prefix:'/api/search',service:'search'}, {prefix:'/api/media',service:'media'}];
+const routes = [{prefix:'/api/auth',service:'auth'}, {prefix:'/api/products',service:'catalog'}, {prefix:'/api/reviews',service:'catalog'}, {prefix:'/api/carts',service:'cart'}, {prefix:'/api/orders',service:'order'}, {prefix:'/api/payments',service:'payment'}, {prefix:'/api/inventory',service:'inventory'}, {prefix:'/api/notifications',service:'notification'}, {prefix:'/api/search',service:'search'}, {prefix:'/api/media',service:'media'}];
 app.get('/api/health/:service', async (req, res) => {
   const target = targets[req.params.service];
   if (!target) return res.status(404).json({ code: 'UNKNOWN_SERVICE' });
