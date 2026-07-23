@@ -1,5 +1,6 @@
 const { pgTable, pgEnum, uuid, text, integer, timestamp } = require('drizzle-orm/pg-core');
 const orderStatus = pgEnum('order_status', ['pending', 'confirmed', 'preparing', 'shipped', 'delivered', 'cancelled']);
+const productStatus = pgEnum('product_status', ['published', 'hidden', 'archived']);
 
 const users = pgTable('users', {
   id: uuid('id').primaryKey(), email: text('email').notNull().unique(), passwordHash: text('password_hash').notNull(),
@@ -7,7 +8,7 @@ const users = pgTable('users', {
 });
 const products = pgTable('products', {
   id: uuid('id').primaryKey(), name: text('name').notNull(), brand: text('brand').notNull(), category: text('category').notNull(),
-  price: integer('price').notNull(), note: text('note'), color: text('color'), image: text('image'), stock: integer('stock').notNull(), status: text('status').default('published'), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  price: integer('price').notNull(), note: text('note'), color: text('color'), image: text('image'), stock: integer('stock').notNull(), status: productStatus('status').default('published'), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 const cartItems = pgTable('cart_items', {
   userId: uuid('user_id').notNull(), productId: uuid('product_id').notNull(), name: text('name').notNull(), brand: text('brand').notNull(), image: text('image'), price: integer('price').notNull(), quantity: integer('quantity').notNull(),
@@ -26,4 +27,4 @@ const payments = pgTable('payments', { id: uuid('id').primaryKey(), orderId: uui
 const mediaAssets = pgTable('media_assets', { id: uuid('id').primaryKey(), ownerId: uuid('owner_id'), contentType: text('content_type').notNull(), objectKey: text('object_key').notNull(), publicUrl: text('public_url').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow() });
 const searchEvents = pgTable('search_events', { id: uuid('id').primaryKey(), eventType: text('event_type').notNull(), receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow() });
 
-module.exports = { users, products, cartItems, orders, orderItems, notifications, stock, payments, mediaAssets, searchEvents, orderStatus };
+module.exports = { users, products, cartItems, orders, orderItems, notifications, stock, payments, mediaAssets, searchEvents, orderStatus, productStatus };
