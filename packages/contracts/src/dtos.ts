@@ -1,59 +1,62 @@
-const {
-  IsEmail, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength,
-} = require('class-validator');
+import {
+  IsEmail,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
-function field(decorators, target, name) {
-  for (const decorator of decorators) decorator(target.prototype, name);
+export class RegisterDto {
+  @IsEmail() @MaxLength(320) email!: string;
+  @IsString() @MinLength(8) @MaxLength(128) password!: string;
+  @IsString() @IsNotEmpty() @MaxLength(100) name!: string;
+  @IsOptional() @IsString() @MaxLength(30) phone?: string;
 }
 
-class RegisterDto {}
-field([IsEmail(), MaxLength(320)], RegisterDto, 'email');
-field([IsString(), MinLength(8), MaxLength(128)], RegisterDto, 'password');
-field([IsString(), IsNotEmpty(), MaxLength(100)], RegisterDto, 'name');
-field([IsOptional(), IsString(), MaxLength(30)], RegisterDto, 'phone');
+export class LoginDto {
+  @IsEmail() @MaxLength(320) email!: string;
+  @IsString() @MinLength(1) @MaxLength(128) password!: string;
+}
 
-class LoginDto {}
-field([IsEmail(), MaxLength(320)], LoginDto, 'email');
-field([IsString(), MinLength(1), MaxLength(128)], LoginDto, 'password');
+export class RefreshDto {
+  @IsOptional() @IsString() @MaxLength(512) refreshToken?: string;
+}
 
-class RefreshDto {}
-field([IsOptional(), IsString(), MaxLength(512)], RefreshDto, 'refreshToken');
+export class PaymentConfirmDto {
+  @IsOptional() @IsString() @MaxLength(200) paymentKey?: string;
+  @IsUUID() orderId!: string;
+  @IsInt() @Min(0) amount!: number;
+  @IsOptional() order?: unknown;
+  @IsOptional() @IsIn(['card', 'kakaopay', 'naverpay', 'bank']) provider?: string;
+  @IsOptional() @IsIn(['card', 'kakaopay', 'naverpay', 'bank']) method?: string;
+}
 
-class PaymentConfirmDto {}
-field([IsOptional(), IsString(), MaxLength(200)], PaymentConfirmDto, 'paymentKey');
-field([IsUUID()], PaymentConfirmDto, 'orderId');
-field([IsInt(), Min(0)], PaymentConfirmDto, 'amount');
-field([IsOptional()], PaymentConfirmDto, 'order');
-field([IsOptional(), IsIn(['card', 'kakaopay', 'naverpay', 'bank'])], PaymentConfirmDto, 'provider');
-field([IsOptional(), IsIn(['card', 'kakaopay', 'naverpay', 'bank'])], PaymentConfirmDto, 'method');
+export class RefundDto {
+  @IsInt() @Min(1) amount!: number;
+  @IsString() @IsNotEmpty() @MaxLength(500) reason!: string;
+}
 
-class RefundDto {}
-field([IsInt(), Min(1)], RefundDto, 'amount');
-field([IsString(), IsNotEmpty(), MaxLength(500)], RefundDto, 'reason');
+export class InventoryAdjustmentDto {
+  @IsInt() @Min(0) availableQty!: number;
+  @IsOptional() @IsUUID() warehouseId?: string;
+  @IsString() @IsNotEmpty() @MaxLength(500) reason!: string;
+}
 
-class InventoryAdjustmentDto {}
-field([IsInt(), Min(0)], InventoryAdjustmentDto, 'availableQty');
-field([IsOptional(), IsUUID()], InventoryAdjustmentDto, 'warehouseId');
-field([IsString(), IsNotEmpty(), MaxLength(500)], InventoryAdjustmentDto, 'reason');
+export class GuestAccessDto {
+  @IsString() @IsNotEmpty() @MaxLength(40) orderNumber!: string;
+  @IsString() @IsNotEmpty() @MaxLength(30) phone!: string;
+}
 
-class GuestAccessDto {}
-field([IsString(), IsNotEmpty(), MaxLength(40)], GuestAccessDto, 'orderNumber');
-field([IsString(), IsNotEmpty(), MaxLength(30)], GuestAccessDto, 'phone');
-
-class PaginationDto {}
-field([IsOptional(), IsInt(), Min(1)], PaginationDto, 'page');
-field([IsOptional(), IsInt(), Min(1), Max(100)], PaginationDto, 'pageSize');
-field([IsOptional(), IsString(), MaxLength(100)], PaginationDto, 'sort');
-field([IsOptional(), IsIn(['asc', 'desc'])], PaginationDto, 'direction');
-field([IsOptional(), IsString(), MaxLength(200)], PaginationDto, 'search');
-
-module.exports = {
-  GuestAccessDto,
-  InventoryAdjustmentDto,
-  LoginDto,
-  PaginationDto,
-  PaymentConfirmDto,
-  RefreshDto,
-  RefundDto,
-  RegisterDto,
-};
+export class PaginationDto {
+  @IsOptional() @IsInt() @Min(1) page?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(100) pageSize?: number;
+  @IsOptional() @IsString() @MaxLength(100) sort?: string;
+  @IsOptional() @IsIn(['asc', 'desc']) direction?: 'asc' | 'desc';
+  @IsOptional() @IsString() @MaxLength(200) search?: string;
+}

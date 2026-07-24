@@ -3,9 +3,9 @@ import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { envelope } = require('../backend/shared/bus');
-const openapi = JSON.parse(await fs.readFile(new URL('../contracts/openapi.json', import.meta.url), 'utf8'));
-const schema = JSON.parse(await fs.readFile(new URL('../contracts/event-envelope.schema.json', import.meta.url), 'utf8'));
+const { envelope } = require('@techzone/messaging/bus');
+const openapi = JSON.parse(await fs.readFile(new URL('../../packages/contracts/schemas/openapi.json', import.meta.url), 'utf8'));
+const schema = JSON.parse(await fs.readFile(new URL('../../packages/contracts/schemas/event-envelope.schema.json', import.meta.url), 'utf8'));
 
 assert.equal(openapi.openapi, '3.1.0');
 assert.ok(openapi.paths['/auth/login']);

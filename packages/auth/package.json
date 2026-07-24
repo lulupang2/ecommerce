@@ -1,0 +1,1 @@
+{"name":"@techzone/auth-platform","version":"0.1.0","private":true,"type":"commonjs","exports":{"./auth":"./src/auth.cjs","./tokens":"./src/tokens.cjs","./rate-limit":"./src/rate-limit.cjs"},"scripts":{"build":"node --check src/auth.cjs","typecheck":"node --check src/auth.cjs","lint":"node --check src/auth.cjs","test":"node --test"}}

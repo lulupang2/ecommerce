@@ -2,9 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const jwt = require('jsonwebtoken');
-const { envelope } = require('../../backend/shared/bus');
-const { publicJwks, signAccessToken } = require('../../backend/platform/tokens');
-const { redact } = require('../../backend/platform/logger');
+const { envelope } = require('@techzone/messaging/bus');
+const { publicJwks, signAccessToken } = require('@techzone/auth-platform/tokens');
+const { redact } = require('@techzone/observability/logger');
 
 test('event envelope carries v1 correlation metadata', () => {
   const event = envelope('order.created', { orderId: crypto.randomUUID() }, { source: 'unit', correlationId: 'correlation-1' });

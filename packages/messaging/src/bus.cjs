@@ -1,8 +1,8 @@
 const crypto = require('crypto');
 const amqp = require('amqplib');
-const { currentContext } = require('../platform/context');
-const { outboxPending, deadLetters: deadLetterCount } = require('../platform/metrics');
-const logger = require('../platform/logger');
+const { currentContext } = require('@techzone/observability/context');
+const { outboxPending, deadLetters: deadLetterCount } = require('@techzone/observability/metrics');
+const logger = require('@techzone/observability/logger');
 
 const exchange = 'techzone.events';
 const retryDelays = [1_000, 5_000, 30_000, 120_000, 600_000];

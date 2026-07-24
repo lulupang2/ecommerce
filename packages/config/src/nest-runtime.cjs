@@ -1,9 +1,9 @@
 const { Controller, Get, Module, Res, ValidationPipe } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { SwaggerModule, DocumentBuilder } = require('@nestjs/swagger');
-const { client } = require('./metrics');
-const { StandardExceptionFilter } = require('./errors');
-const { startTelemetry, stopTelemetry } = require('./otel');
+const { client } = require('@techzone/observability/metrics');
+const { StandardExceptionFilter } = require('@techzone/config/errors');
+const { startTelemetry, stopTelemetry } = require('@techzone/observability/otel');
 
 function createPlatformModule(service, readiness) {
   class PlatformController {
@@ -50,9 +50,9 @@ async function bootstrapNest({ router, service, port, readiness }) {
   await app.listen(port, '0.0.0.0');
   const shutdown = async signal => {
     console.log(JSON.stringify({ level: 'info', service, message: 'shutdown.started', signal }));
-    const { close } = require('../shared/bus');
-    const { closeDatabases } = require('../shared/db');
-    const { closeRateLimit } = require('./rate-limit');
+    const { close } = require('@techzone/messaging/bus');
+    const { closeDatabases } = require('@techzone/database/db');
+    const { closeRateLimit } = require('@techzone/auth-platform/rate-limit');
     await Promise.race([
       Promise.allSettled([close(), closeDatabases(), closeRateLimit()]),
       new Promise(resolve => setTimeout(resolve, 25_000)),

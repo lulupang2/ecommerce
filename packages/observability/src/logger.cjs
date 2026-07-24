@@ -1,4 +1,4 @@
-const { currentContext } = require('./context');
+const { currentContext } = require('./context.cjs');
 const { trace } = require('@opentelemetry/api');
 
 const sensitiveKeys = new Set(['password', 'passwordHash', 'password_hash', 'refreshToken', 'accessToken', 'authorization', 'phone', 'email']);

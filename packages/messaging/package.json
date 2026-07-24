@@ -1,0 +1,1 @@
+{"name":"@techzone/messaging","version":"0.1.0","private":true,"type":"commonjs","exports":{"./bus":"./src/bus.cjs","./idempotency":"./src/idempotency.cjs"},"scripts":{"build":"node --check src/bus.cjs","typecheck":"node --check src/bus.cjs","lint":"node --check src/bus.cjs","test":"node --test"}}

@@ -1,6 +1,6 @@
 const { Catch, HttpException } = require('@nestjs/common');
-const { currentContext } = require('./context');
-const logger = require('./logger');
+const { currentContext } = require('@techzone/observability/context');
+const logger = require('@techzone/observability/logger');
 
 class StandardExceptionFilter {
   catch(exception, host) {

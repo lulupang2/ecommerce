@@ -2,12 +2,12 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
-const { contextMiddleware } = require('../platform/context');
-const { metricsMiddleware } = require('../platform/metrics');
-const { standardErrorMiddleware } = require('../platform/errors');
-const logger = require('../platform/logger');
-const { bootstrapNest } = require('../platform/nest-runtime');
-const { hit } = require('../platform/rate-limit');
+const { contextMiddleware } = require('@techzone/observability/context');
+const { metricsMiddleware } = require('@techzone/observability/metrics');
+const { standardErrorMiddleware } = require('@techzone/config/errors');
+const logger = require('@techzone/observability/logger');
+const { bootstrapNest } = require('@techzone/config/nest-runtime');
+const { hit } = require('@techzone/auth-platform/rate-limit');
 
 function server(name) {
   const app = express();
@@ -58,8 +58,8 @@ async function listen(app, name, readiness) {
   const port = Number(process.env.PORT || 3000);
   app.use(app._techzoneErrorMiddleware);
   const defaultReadiness = async () => {
-    const { databaseReadiness } = require('./db');
-    const { messagingReadiness } = require('./bus');
+    const { databaseReadiness } = require('@techzone/database/db');
+    const { messagingReadiness } = require('@techzone/messaging/bus');
     return { ...(await databaseReadiness()), ...(await messagingReadiness()) };
   };
   const nestApp = await bootstrapNest({ router: app, service: name, port, readiness: readiness || defaultReadiness });

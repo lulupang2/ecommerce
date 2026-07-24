@@ -1,0 +1,1 @@
+{"name":"@techzone/config","version":"0.1.0","private":true,"type":"commonjs","exports":{"./validation":"./src/validation.cjs","./errors":"./src/errors.cjs","./nest-runtime":"./src/nest-runtime.cjs","./http":"./src/http.cjs"},"scripts":{"build":"node --check src/http.cjs","typecheck":"node --check src/http.cjs","lint":"node --check src/http.cjs","test":"node --test"}}

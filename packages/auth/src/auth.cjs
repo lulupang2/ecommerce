@@ -1,5 +1,5 @@
-const { verifyAccessToken } = require('../platform/tokens');
-const { setContextFields } = require('../platform/context');
+const { verifyAccessToken } = require('@techzone/auth-platform/tokens');
+const { setContextFields } = require('@techzone/observability/context');
 
 function readToken(req) {
   const value = req.headers.authorization || '';

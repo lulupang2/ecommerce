@@ -1,0 +1,30 @@
+{
+  "name": "@techzone/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "exports": {
+    ".": "./dist/index.js",
+    "./dtos": "./dist/dtos.js",
+    "./events": "./dist/events.js",
+    "./openapi.json": "./schemas/openapi.json",
+    "./event-envelope.schema.json": "./schemas/event-envelope.schema.json"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1"
+  },
+  "devDependencies": {
+    "@techzone/eslint-config": "*",
+    "@techzone/tsconfig": "*",
+    "@types/node": "^22.19.0",
+    "eslint": "^9.39.2",
+    "typescript": "^5.9.3"
+  }
+}
