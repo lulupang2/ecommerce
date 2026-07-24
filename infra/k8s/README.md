@@ -4,8 +4,8 @@
 
 ```bash
 kubectl apply -f infra/k8s/rbac.yaml
-node scripts/render-k8s.mjs | kubectl apply --dry-run=server -f -
-node scripts/render-k8s.mjs | kubectl apply -f -
+npm run k8s:render | kubectl apply --dry-run=server -f -
+npm run k8s:render | kubectl apply -f -
 ```
 
 렌더러는 13개 NestJS 서비스별 Deployment·Service·PDB를 생성합니다. Gateway, Order, Payment, Inventory, Fulfillment에는 CPU 70% 기준 2–6 replica HPA가 포함됩니다. Migration Job이 성공한 뒤 애플리케이션을 배포하는 순서는 CI/CD 파이프라인에서 보장해야 합니다.

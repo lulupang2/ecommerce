@@ -1,11 +1,11 @@
 import fs from 'node:fs/promises';
 
-const config = JSON.parse(await fs.readFile(new URL('../infra/k8s/apps.json', import.meta.url), 'utf8'));
+const config = JSON.parse(await fs.readFile(new URL('../../infra/k8s/apps.json', import.meta.url), 'utf8'));
 const documents = [];
 const push = value => documents.push(JSON.stringify(value, null, 2));
 const env = [
   { name: 'NODE_ENV', value: 'production' },
-  { name: 'NODE_OPTIONS', value: '--require=/app/backend/platform/otel-register.js' },
+  { name: 'NODE_OPTIONS', value: '--require=@techzone/observability/register' },
   { name: 'SCHEMA_MANAGED_BY_MIGRATIONS', value: 'true' },
   { name: 'RABBIT_URL', valueFrom: { secretKeyRef: { name: 'techzone-secrets', key: 'rabbit-url' } } },
   { name: 'REDIS_URL', valueFrom: { secretKeyRef: { name: 'techzone-secrets', key: 'redis-url' } } },
@@ -21,7 +21,7 @@ push({
   spec: { backoffLimit: 3, ttlSecondsAfterFinished: 3600, template: { metadata: { labels: { app: 'techzone-migration' } }, spec: {
     restartPolicy: 'OnFailure',
     serviceAccountName: 'techzone',
-    containers: [{ name: 'migration', image: config.image, command: ['node', 'scripts/migrate.mjs'], env: [
+    containers: [{ name: 'migration', image: config.image, command: ['node', 'tools/migrations/run.mjs'], env: [
       { name: 'POSTGRES_HOST', valueFrom: { secretKeyRef: { name: 'techzone-secrets', key: 'postgres-host' } } },
       { name: 'POSTGRES_USER', valueFrom: { secretKeyRef: { name: 'techzone-secrets', key: 'postgres-user' } } },
       { name: 'POSTGRES_PASSWORD', valueFrom: { secretKeyRef: { name: 'techzone-secrets', key: 'postgres-password' } } },
@@ -46,7 +46,9 @@ for (const service of config.services) {
             name: service.name,
             image: config.image,
             imagePullPolicy: 'IfNotPresent',
-            command: ['node', `backend/services/${service.name}/server.js`],
+            command: ['node', service.name === 'gateway'
+              ? 'apps/api-gateway/src/main.cjs'
+              : `apps/services/${service.name === 'admin' ? 'admin-query' : service.name}/src/main.cjs`],
             ports: [{ name: 'http', containerPort: service.port }],
             env: [
               { name: 'PORT', value: String(service.port) },

@@ -1,4 +1,11 @@
 node_modules
 dist
+.next
+out
+apps/mobile/android/.gradle
+apps/mobile/android/app/build
+apps/mobile/android/app/src/main/assets
+.turbo
+*.tsbuildinfo
 .git
 .agents

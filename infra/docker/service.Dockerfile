@@ -1,9 +1,10 @@
 FROM node:22-alpine
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev
-COPY backend ./backend
-COPY scripts ./scripts
-COPY contracts ./contracts
+COPY package.json package-lock.json turbo.json ./
+COPY apps ./apps
+COPY packages ./packages
+COPY tools ./tools
+RUN npm ci
+RUN npm run build -w @techzone/contracts
 EXPOSE 3000
-CMD ["node", "backend/services/gateway/server.js"]
+CMD ["node", "apps/api-gateway/src/main.cjs"]

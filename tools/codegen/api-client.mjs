@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 
-const spec = JSON.parse(await fs.readFile(new URL('../contracts/openapi.json', import.meta.url), 'utf8'));
+const spec = JSON.parse(await fs.readFile(new URL('../../packages/contracts/schemas/openapi.json', import.meta.url), 'utf8'));
 const operations = Object.values(spec.paths).flatMap(path => Object.values(path)).filter(operation => operation.operationId);
 const required = ['login', 'refreshSession', 'listProducts', 'createOrder', 'getAdminDashboard', 'listDeadLetters'];
 for (const operation of required) {
@@ -31,5 +31,5 @@ export class TechzoneApiClient {
   listDeadLetters(query = '') { return this.request<Page>(\`/admin/dead-letters\${query ? \`?\${query}\` : ''}\`); }
 }
 `;
-await fs.writeFile(new URL('../lib/generated/client.ts', import.meta.url), client);
+await fs.writeFile(new URL('../../packages/api-client/src/generated/client.ts', import.meta.url), client);
 console.log(`Generated ${operations.length} OpenAPI operations.`);

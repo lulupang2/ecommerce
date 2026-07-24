@@ -1,5 +1,5 @@
 x-service: &service
-  build: { context: ., dockerfile: backend/Dockerfile }
+  build: { context: ., dockerfile: infra/docker/service.Dockerfile }
   restart: unless-stopped
   environment: &common-env
     NODE_ENV: development
@@ -14,7 +14,7 @@ x-service: &service
     OTEL_RESOURCE_ATTRIBUTES: deployment.environment=local
     GRAFANA_URL: http://localhost:13000
     SCHEMA_MANAGED_BY_MIGRATIONS: "true"
-    NODE_OPTIONS: --require=/app/backend/platform/otel-register.js
+    NODE_OPTIONS: --require=@techzone/observability/register
   depends_on:
     postgres: { condition: service_healthy }
     rabbitmq: { condition: service_healthy }
@@ -61,7 +61,7 @@ services:
 
   migration:
     <<: *service
-    command: node scripts/migrate.mjs
+    command: node tools/migrations/run.mjs
     environment:
       <<: *common-env
       POSTGRES_HOST: postgres
@@ -72,7 +72,7 @@ services:
 
   auth:
     <<: *service
-    command: node backend/services/auth/server.js
+    command: node apps/services/auth/src/main.cjs
     environment:
       <<: *common-env
       PORT: 3001
@@ -88,49 +88,49 @@ services:
 
   catalog:
     <<: *service
-    command: node backend/services/catalog/server.js
+    command: node apps/services/catalog/src/main.cjs
     environment: { <<: *common-env, PORT: 3002, SERVICE_NAME: catalog, DATABASE_URL: postgres://canvas:canvas@postgres:5432/catalog, ORDER_URL: http://order:3004 }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy } }
 
   cart:
     <<: *service
-    command: node backend/services/cart/server.js
+    command: node apps/services/cart/src/main.cjs
     environment: { <<: *common-env, PORT: 3003, SERVICE_NAME: cart, DATABASE_URL: postgres://canvas:canvas@postgres:5432/cart }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
 
   order:
     <<: *service
-    command: node backend/services/order/server.js
+    command: node apps/services/order/src/main.cjs
     environment: { <<: *common-env, PORT: 3004, SERVICE_NAME: order, DATABASE_URL: postgres://canvas:canvas@postgres:5432/orders, CATALOG_URL: http://catalog:3002 }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
 
   payment:
     <<: *service
-    command: node backend/services/payment/server.js
+    command: node apps/services/payment/src/main.cjs
     environment: { <<: *common-env, PORT: 3005, SERVICE_NAME: payment, DATABASE_URL: postgres://canvas:canvas@postgres:5432/payments, TOSS_SECRET_KEY: "${TOSS_SECRET_KEY:-}" }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
 
   inventory:
     <<: *service
-    command: node backend/services/inventory/server.js
+    command: node apps/services/inventory/src/main.cjs
     environment: { <<: *common-env, PORT: 3006, SERVICE_NAME: inventory, DATABASE_URL: postgres://canvas:canvas@postgres:5432/inventory, CATALOG_URL: http://catalog:3002 }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
 
   notification:
     <<: *service
-    command: node backend/services/notification/server.js
+    command: node apps/services/notification/src/main.cjs
     environment: { <<: *common-env, PORT: 3007, SERVICE_NAME: notification, DATABASE_URL: postgres://canvas:canvas@postgres:5432/notifications }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
 
   search:
     <<: *service
-    command: node backend/services/search/server.js
+    command: node apps/services/search/src/main.cjs
     environment: { <<: *common-env, PORT: 3008, SERVICE_NAME: search, DATABASE_URL: postgres://canvas:canvas@postgres:5432/search, CATALOG_URL: http://catalog:3002 }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, catalog: { condition: service_healthy } }
 
   media:
     <<: *service
-    command: node backend/services/media/server.js
+    command: node apps/services/media/src/main.cjs
     environment:
       <<: *common-env
       PORT: 3009
@@ -145,35 +145,53 @@ services:
 
   fulfillment:
     <<: *service
-    command: node backend/services/fulfillment/server.js
+    command: node apps/services/fulfillment/src/main.cjs
     environment: { <<: *common-env, PORT: 3010, SERVICE_NAME: fulfillment, DATABASE_URL: postgres://canvas:canvas@postgres:5432/fulfillment, ORDER_URL: http://order:3004, INVENTORY_URL: http://inventory:3006, PAYMENT_URL: http://payment:3005 }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, order: { condition: service_healthy }, inventory: { condition: service_healthy } }
 
   procurement:
     <<: *service
-    command: node backend/services/procurement/server.js
+    command: node apps/services/procurement/src/main.cjs
     environment: { <<: *common-env, PORT: 3011, SERVICE_NAME: procurement, DATABASE_URL: postgres://canvas:canvas@postgres:5432/procurement, CATALOG_URL: http://catalog:3002, INVENTORY_URL: http://inventory:3006 }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy }, inventory: { condition: service_healthy } }
 
   admin:
     <<: *service
-    command: node backend/services/admin/server.js
+    command: node apps/services/admin-query/src/main.cjs
     environment: { <<: *common-env, PORT: 3012, SERVICE_NAME: admin, DATABASE_URL: postgres://canvas:canvas@postgres:5432/admin, CATALOG_URL: http://catalog:3002, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, FULFILLMENT_URL: http://fulfillment:3010, PROCUREMENT_URL: http://procurement:3011 }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy }, order: { condition: service_healthy }, payment: { condition: service_healthy }, inventory: { condition: service_healthy }, fulfillment: { condition: service_healthy }, procurement: { condition: service_healthy } }
 
   gateway:
     <<: *service
-    command: node backend/services/gateway/server.js
+    command: node apps/api-gateway/src/main.cjs
     environment: { <<: *common-env, PORT: 8080, SERVICE_NAME: gateway, CATALOG_URL: http://catalog:3002, CART_URL: http://cart:3003, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, NOTIFICATION_URL: http://notification:3007, SEARCH_URL: http://search:3008, MEDIA_URL: http://media:3009, FULFILLMENT_URL: http://fulfillment:3010, PROCUREMENT_URL: http://procurement:3011, ADMIN_URL: http://admin:3012 }
     ports: ["18080:8080"]
     depends_on: [auth, catalog, cart, order, payment, inventory, notification, search, media, fulfillment, procurement, admin]
 
-  web:
-    build: { context: ., dockerfile: frontend.Dockerfile }
+  storefront:
+    build:
+      context: .
+      dockerfile: infra/docker/frontend.Dockerfile
+      args: { APP_NAME: storefront }
     restart: unless-stopped
-    environment: { PORT: 3000, INTERNAL_API_BASE_URL: http://gateway:8080/api, NEXT_PUBLIC_API_BASE_URL: http://localhost:18080/api }
-    ports: ["15173:3000"]
+    environment: { PORT: 3000, INTERNAL_API_BASE_URL: http://gateway:8080/api, NEXT_PUBLIC_API_BASE_URL: /api }
     depends_on: { gateway: { condition: service_healthy } }
+
+  admin-web:
+    build:
+      context: .
+      dockerfile: infra/docker/frontend.Dockerfile
+      args: { APP_NAME: admin }
+    restart: unless-stopped
+    environment: { PORT: 3001, INTERNAL_API_BASE_URL: http://gateway:8080/api, NEXT_PUBLIC_API_BASE_URL: /api }
+    depends_on: { gateway: { condition: service_healthy } }
+
+  web:
+    image: nginx:1.29-alpine
+    restart: unless-stopped
+    volumes: ["./infra/docker/edge.nginx.conf:/etc/nginx/conf.d/default.conf:ro"]
+    ports: ["15173:8080"]
+    depends_on: [storefront, admin-web, gateway]
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.130.1
