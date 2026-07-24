@@ -118,11 +118,31 @@ function PermissionGuard(permission) {
   return mixin(PermissionMixinGuard);
 }
 
+function OwnerGuard(param = 'userId') {
+  class OwnerMixinGuard {
+    canActivate(context) {
+      const request = context.switchToHttp().getRequest();
+      if (
+        request.user?.sub === request.params[param]
+        || request.user?.role === 'admin'
+        || request.user?.adminRole === 'super_admin'
+      ) return true;
+      throw new ForbiddenException({
+        code: 'RESOURCE_FORBIDDEN',
+        message: '다른 사용자의 리소스에 접근할 수 없습니다.',
+      });
+    }
+  }
+  Injectable()(OwnerMixinGuard);
+  return mixin(OwnerMixinGuard);
+}
+
 module.exports = {
   AuthGuard,
   CookieCsrfGuard,
   InternalGuard,
   OptionalAuthGuard,
+  OwnerGuard,
   PermissionGuard,
   RoleGuard,
 };

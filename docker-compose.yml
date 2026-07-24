@@ -70,6 +70,21 @@ services:
     restart: "no"
     healthcheck: { disable: true }
 
+  seed:
+    <<: *service
+    command: node tools/seeds/run.mjs
+    environment:
+      <<: *common-env
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: canvas
+      POSTGRES_PASSWORD: canvas
+      ADMIN_EMAIL: admin@techzone.local
+      ADMIN_PASSWORD: TechzoneAdmin123!
+    depends_on:
+      migration: { condition: service_completed_successfully }
+    restart: "no"
+    healthcheck: { disable: true }
+
   auth:
     <<: *service
     command: node apps/services/auth/dist/main.js
@@ -82,55 +97,55 @@ services:
       ADMIN_PASSWORD: TechzoneAdmin123!
       ADMIN_NAME: TECHZONE Admin
     depends_on:
-      migration: { condition: service_completed_successfully }
+      seed: { condition: service_completed_successfully }
       rabbitmq: { condition: service_healthy }
       redis: { condition: service_healthy }
 
   catalog:
     <<: *service
-    command: node apps/services/catalog/src/main.cjs
+    command: node apps/services/catalog/dist/main.js
     environment: { <<: *common-env, PORT: 3002, SERVICE_NAME: catalog, DATABASE_URL: postgres://canvas:canvas@postgres:5432/catalog, ORDER_URL: http://order:3004 }
-    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy } }
+    depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy } }
 
   cart:
     <<: *service
-    command: node apps/services/cart/src/main.cjs
+    command: node apps/services/cart/dist/main.js
     environment: { <<: *common-env, PORT: 3003, SERVICE_NAME: cart, DATABASE_URL: postgres://canvas:canvas@postgres:5432/cart }
-    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
+    depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
 
   order:
     <<: *service
     command: node apps/services/order/dist/main.js
     environment: { <<: *common-env, PORT: 3004, SERVICE_NAME: order, DATABASE_URL: postgres://canvas:canvas@postgres:5432/orders, CATALOG_URL: http://catalog:3002 }
-    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
+    depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
 
   payment:
     <<: *service
     command: node apps/services/payment/dist/main.js
     environment: { <<: *common-env, PORT: 3005, SERVICE_NAME: payment, DATABASE_URL: postgres://canvas:canvas@postgres:5432/payments, TOSS_SECRET_KEY: "${TOSS_SECRET_KEY:-}" }
-    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
+    depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
 
   inventory:
     <<: *service
     command: node apps/services/inventory/dist/main.js
     environment: { <<: *common-env, PORT: 3006, SERVICE_NAME: inventory, DATABASE_URL: postgres://canvas:canvas@postgres:5432/inventory, CATALOG_URL: http://catalog:3002 }
-    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
+    depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
 
   notification:
     <<: *service
-    command: node apps/services/notification/src/main.cjs
+    command: node apps/services/notification/dist/main.js
     environment: { <<: *common-env, PORT: 3007, SERVICE_NAME: notification, DATABASE_URL: postgres://canvas:canvas@postgres:5432/notifications }
-    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
+    depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
 
   search:
     <<: *service
-    command: node apps/services/search/src/main.cjs
+    command: node apps/services/search/dist/main.js
     environment: { <<: *common-env, PORT: 3008, SERVICE_NAME: search, DATABASE_URL: postgres://canvas:canvas@postgres:5432/search, CATALOG_URL: http://catalog:3002 }
-    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, catalog: { condition: service_healthy } }
+    depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, catalog: { condition: service_healthy } }
 
   media:
     <<: *service
-    command: node apps/services/media/src/main.cjs
+    command: node apps/services/media/dist/main.js
     environment:
       <<: *common-env
       PORT: 3009
@@ -141,25 +156,25 @@ services:
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin
       S3_BUCKET: techzone-media
-    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, minio: { condition: service_healthy } }
+    depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, minio: { condition: service_healthy } }
 
   fulfillment:
     <<: *service
-    command: node apps/services/fulfillment/src/main.cjs
+    command: node apps/services/fulfillment/dist/main.js
     environment: { <<: *common-env, PORT: 3010, SERVICE_NAME: fulfillment, DATABASE_URL: postgres://canvas:canvas@postgres:5432/fulfillment, ORDER_URL: http://order:3004, INVENTORY_URL: http://inventory:3006, PAYMENT_URL: http://payment:3005 }
-    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, order: { condition: service_healthy }, inventory: { condition: service_healthy } }
+    depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, order: { condition: service_healthy }, inventory: { condition: service_healthy } }
 
   procurement:
     <<: *service
-    command: node apps/services/procurement/src/main.cjs
+    command: node apps/services/procurement/dist/main.js
     environment: { <<: *common-env, PORT: 3011, SERVICE_NAME: procurement, DATABASE_URL: postgres://canvas:canvas@postgres:5432/procurement, CATALOG_URL: http://catalog:3002, INVENTORY_URL: http://inventory:3006 }
-    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy }, inventory: { condition: service_healthy } }
+    depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy }, inventory: { condition: service_healthy } }
 
   admin:
     <<: *service
-    command: node apps/services/admin-query/src/main.cjs
+    command: node apps/services/admin-query/dist/main.js
     environment: { <<: *common-env, PORT: 3012, SERVICE_NAME: admin, DATABASE_URL: postgres://canvas:canvas@postgres:5432/admin, CATALOG_URL: http://catalog:3002, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, FULFILLMENT_URL: http://fulfillment:3010, PROCUREMENT_URL: http://procurement:3011 }
-    depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy }, order: { condition: service_healthy }, payment: { condition: service_healthy }, inventory: { condition: service_healthy }, fulfillment: { condition: service_healthy }, procurement: { condition: service_healthy } }
+    depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy }, order: { condition: service_healthy }, payment: { condition: service_healthy }, inventory: { condition: service_healthy }, fulfillment: { condition: service_healthy }, procurement: { condition: service_healthy } }
 
   gateway:
     <<: *service

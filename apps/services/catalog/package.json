@@ -4,8 +4,8 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "dev": "node --watch src/main.cjs",
-    "start": "node src/main.cjs",
+    "dev": "npm run build && node --watch dist/main.js",
+    "start": "node dist/main.js",
     "build": "tsc",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
@@ -20,11 +20,13 @@
     "@techzone/messaging": "*",
     "@techzone/observability": "*",
     "@nestjs/common": "^11.1.28",
+    "class-validator": "^0.15.1",
     "sanitize-html": "^2.17.6"
   },
   "devDependencies": {
     "@techzone/tsconfig": "*",
     "@types/node": "^22.19.0",
+    "@types/sanitize-html": "^2.16.0",
     "typescript": "^5.9.3"
   }
 }

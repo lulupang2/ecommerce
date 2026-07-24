@@ -38,6 +38,7 @@
     "test:security": "node tests/security/run.mjs",
     "test:resilience": "node tests/resilience/run.mjs",
     "db:migrate": "node tools/migrations/run.mjs",
+    "db:seed": "node tools/seeds/run.mjs",
     "k8s:render": "node tools/kubernetes/render.mjs",
     "clean": "turbo run clean"
   },

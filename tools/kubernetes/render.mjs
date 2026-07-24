@@ -47,8 +47,8 @@ for (const service of config.services) {
             image: config.image,
             imagePullPolicy: 'IfNotPresent',
             command: ['node', service.name === 'gateway'
-              ? 'apps/api-gateway/src/main.cjs'
-              : `apps/services/${service.name === 'admin' ? 'admin-query' : service.name}/src/main.cjs`],
+              ? 'apps/api-gateway/dist/main.js'
+              : `apps/services/${service.name === 'admin' ? 'admin-query' : service.name}/dist/main.js`],
             ports: [{ name: 'http', containerPort: service.port }],
             env: [
               { name: 'PORT', value: String(service.port) },

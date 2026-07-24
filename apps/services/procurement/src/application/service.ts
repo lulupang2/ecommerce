@@ -1,7 +1,15 @@
-import { Injectable } from '@nestjs/common';
-import { SERVICE_NAME } from '../domain/service-name';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { ProcurementRepository } from '../infrastructure/persistence/repository';
 
 @Injectable()
-export class ProcurementApplicationService {
-  describe() { return { service: SERVICE_NAME, architecture: 'module-controller-service-repository' as const }; }
+export class ProcurementApplicationService implements OnModuleInit {
+  constructor(private readonly repository: ProcurementRepository) {}
+  onModuleInit() { return this.repository.initialize(); }
+  suppliers() { return this.repository.suppliers(); }
+  purchaseOrders() { return this.repository.purchaseOrders(); }
+  create(input: any, actorId: string) { return this.repository.create(input, actorId); }
+  approve(id: string, actorId: string) { return this.repository.approve(id, actorId); }
+  receive(id: string, input: any, actorId: string) {
+    return this.repository.receive(id, input, actorId);
+  }
 }

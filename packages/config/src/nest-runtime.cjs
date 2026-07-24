@@ -95,19 +95,16 @@ function configureHttp(app, service) {
   });
 }
 
-async function bootstrapNest({ module: featureModule, router, service, port, readiness, docsPath = '/docs' }) {
+async function bootstrapNest({ module: featureModule, service, port, readiness, docsPath = '/docs' }) {
   await startTelemetry(service);
-  const rootModule = featureModule
-    ? createRootModule(featureModule, service, readiness)
-    : createPlatformModule(service, readiness);
+  if (!featureModule) throw new Error(`Nest feature module is required for ${service}`);
+  const rootModule = createRootModule(featureModule, service, readiness);
   const app = await NestFactory.create(rootModule, {
     logger: false,
-    bodyParser: router ? false : true,
   });
-  if (featureModule) configureHttp(app, service);
+  configureHttp(app, service);
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
   app.useGlobalFilters(new StandardExceptionFilter());
-  if (router) app.use(router);
   app.enableShutdownHooks();
   const config = new DocumentBuilder().setTitle(`TECHZONE ${service}`).setVersion('1.0').addBearerAuth().build();
   SwaggerModule.setup(docsPath, app, SwaggerModule.createDocument(app, config));

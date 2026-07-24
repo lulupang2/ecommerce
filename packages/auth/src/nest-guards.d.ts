@@ -14,3 +14,4 @@ export declare class OptionalAuthGuard {
 }
 export function RoleGuard(role: string): Type<{ canActivate(context: unknown): boolean }>;
 export function PermissionGuard(permission: string): Type<{ canActivate(context: unknown): boolean }>;
+export function OwnerGuard(param?: string): Type<{ canActivate(context: unknown): boolean }>;
