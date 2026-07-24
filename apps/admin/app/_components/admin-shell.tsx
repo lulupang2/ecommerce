@@ -75,7 +75,7 @@ export default function AdminShell({ children }) {
     <nav className="flex-1 overflow-y-auto px-3 py-5">
       {visibleGroups.map(group => <section className="mb-6" key={group.label}>{!collapsed && <p className="mb-2 px-3 text-[10px] font-bold tracking-[.16em] text-slate-500">{group.label}</p>}<div className="grid gap-1">{group.items.map(item => { const Icon = item.icon; const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href)); return <Link title={collapsed ? item.label : undefined} key={item.href} href={item.href} onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${active ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/30' : 'text-slate-400 hover:bg-white/5 hover:text-white'} ${collapsed ? 'justify-center' : ''}`}><Icon size={18}/>{!collapsed && item.label}</Link>; })}</div></section>)}
     </nav>
-    {!collapsed && <div className="border-t border-white/10 p-4"><Link href="/" className="flex items-center gap-3 rounded-xl p-3 text-xs text-slate-400 hover:bg-white/5"><PackageCheck size={17}/> 고객 스토어 보기</Link></div>}
+    {!collapsed && <div className="border-t border-white/10 p-4"><a href="/" className="flex items-center gap-3 rounded-xl p-3 text-xs text-slate-400 hover:bg-white/5"><PackageCheck size={17}/> 고객 스토어 보기</a></div>}
   </div>;
 
   return <div className="min-h-screen bg-[#f5f7fb] text-slate-950">

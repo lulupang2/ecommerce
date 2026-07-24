@@ -1,13 +1,13 @@
 import { Body, Controller, Get, NotFoundException, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard, RoleGuard } from '@techzone/auth-platform/nest-guards';
-import { IsIn, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { MediaApplicationService } from '../application/service';
 
 class UploadUrlDto {
-  @IsIn(['image/jpeg', 'image/png', 'image/webp'])
-  contentType!: string;
-  @IsString() @MaxLength(255)
-  fileName!: string;
+  @IsOptional() @IsIn(['image/jpeg', 'image/png', 'image/webp'])
+  contentType = 'image/jpeg';
+  @IsOptional() @IsString() @MaxLength(255)
+  fileName = 'asset.jpg';
 }
 
 @Controller()
