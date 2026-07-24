@@ -1,0 +1,7 @@
+{
+  "extends": "@techzone/tsconfig/base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["capacitor.config.ts"]
+}

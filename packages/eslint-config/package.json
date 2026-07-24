@@ -1,0 +1,11 @@
+{
+  "name": "@techzone/eslint-config",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    "./base": "./base.mjs"
+  },
+  "peerDependencies": {
+    "eslint": "^9.0.0"
+  }
+}

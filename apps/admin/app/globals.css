@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@theme { --font-sans: Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: #f5f7fb; color: #0f172a; }
+button { cursor: pointer; }

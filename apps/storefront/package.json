@@ -1,0 +1,32 @@
+{
+  "name": "@techzone/storefront",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "build:mobile": "node scripts/mobile-build.mjs",
+    "start": "next start --port 3000",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@aparajita/capacitor-secure-storage": "^8.0.0",
+    "@techzone/api-client": "*",
+    "@techzone/ui": "*",
+    "lucide-react": "^1.25.0",
+    "next": "^16.2.11",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@techzone/eslint-config": "*",
+    "@techzone/tsconfig": "*",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "typescript": "^5.9.3"
+  }
+}
