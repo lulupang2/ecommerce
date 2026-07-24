@@ -3,10 +3,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 
 const crypto = require('node:crypto') as typeof import('node:crypto');
 const { database } = require('@techzone/database/db') as { database(service: string): any };
-const { orders, orderItems } = require('@techzone/database/schema') as {
-  orders: any;
-  orderItems: any;
-};
+import { orderItems, orders } from './schema';
 const { publish, registerReliability } = require('@techzone/messaging/bus') as {
   publish(event: string, payload: Record<string, unknown>, options?: Record<string, unknown>): Promise<void>;
   registerReliability(service: string, database: any): Promise<void>;

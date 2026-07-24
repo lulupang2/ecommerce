@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 const { database } = require('@techzone/database/db') as { database(service: string): any };
-const { searchEvents } = require('@techzone/database/schema') as { searchEvents: any };
+import { searchEvents } from './schema';
 const { registerReliability } = require('@techzone/messaging/bus') as {
   registerReliability(service: string, database: any): Promise<void>;
 };

@@ -5,7 +5,7 @@ const crypto = require('node:crypto') as typeof import('node:crypto');
 const { database } = require('@techzone/database/db') as {
   database(service: string): any;
 };
-const { users } = require('@techzone/database/schema') as { users: any };
+import { users } from './schema';
 const { registerReliability } = require('@techzone/messaging/bus') as {
   registerReliability(service: string, database: any): Promise<void>;
 };

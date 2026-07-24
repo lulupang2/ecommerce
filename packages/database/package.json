@@ -4,8 +4,7 @@
   "private": true,
   "type": "commonjs",
   "exports": {
-    "./db": "./src/db.cjs",
-    "./schema": "./src/schema.cjs"
+    "./db": "./src/db.cjs"
   },
   "scripts": {
     "build": "node -e \"require('./src/db.cjs')\"",

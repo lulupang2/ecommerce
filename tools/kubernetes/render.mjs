@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 
-const config = JSON.parse(await fs.readFile(new URL('../../infra/k8s/apps.json', import.meta.url), 'utf8'));
+const config = JSON.parse(await fs.readFile(new URL('../../infra/kubernetes/apps.json', import.meta.url), 'utf8'));
 const documents = [];
 const push = value => documents.push(JSON.stringify(value, null, 2));
 const env = [

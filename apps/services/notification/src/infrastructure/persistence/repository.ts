@@ -3,7 +3,7 @@ import { desc, eq } from 'drizzle-orm';
 
 const crypto = require('node:crypto') as typeof import('node:crypto');
 const { database } = require('@techzone/database/db') as { database(service: string): any };
-const { notifications } = require('@techzone/database/schema') as { notifications: any };
+import { notifications } from './schema';
 const { registerReliability } = require('@techzone/messaging/bus') as {
   registerReliability(service: string, database: any): Promise<void>;
 };

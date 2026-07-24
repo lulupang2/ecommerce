@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 
 const { database } = require('@techzone/database/db') as { database(service: string): any };
-const { mediaAssets } = require('@techzone/database/schema') as { mediaAssets: any };
+import { mediaAssets } from './schema';
 
 @Injectable()
 export class MediaRepository {

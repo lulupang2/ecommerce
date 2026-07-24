@@ -9,6 +9,8 @@ out/
 .env.*
 !.env.example
 *.log
+playwright-report/
+test-results/
 apps/mobile/android/.gradle/
 apps/mobile/android/build/
 apps/mobile/android/app/build/

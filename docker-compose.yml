@@ -212,7 +212,8 @@ services:
     image: otel/opentelemetry-collector-contrib:0.130.1
     command: ["--config=/etc/otel/config.yml"]
     volumes: ["./infra/observability/otel-collector.yml:/etc/otel/config.yml:ro"]
-    ports: ["4317:4317", "4318:4318", "9464:9464"]
+    # Windows reserves 4317/4318 on some installations; containers still use the standard ports internally.
+    ports: ["14317:4317", "14318:4318", "9464:9464"]
 
   prometheus:
     image: prom/prometheus:v3.5.0

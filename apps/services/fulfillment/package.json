@@ -20,6 +20,7 @@
     "@techzone/messaging": "*",
     "@techzone/observability": "*",
     "@nestjs/common": "^11.1.28",
+    "drizzle-orm": "^0.45.2",
     "class-validator": "^0.15.1",
     "jsonwebtoken": "^9.0.2"
   },
