@@ -1,9 +1,9 @@
-const { database } = require('../../shared/db');
-const { server, listen } = require('../../shared/http');
-const { publish, subscribe, registerReliability } = require('../../shared/bus');
-const { requireAuth, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
+const { database } = require('@techzone/database/db');
+const { server, listen } = require('@techzone/config/http');
+const { publish, subscribe, registerReliability } = require('@techzone/messaging/bus');
+const { requireAuth, requireRole, requireInternal, requirePermission } = require('@techzone/auth-platform/auth');
 const jwt = require('jsonwebtoken');
-const { idempotency } = require('../../platform/idempotency');
+const { idempotency } = require('@techzone/messaging/idempotency');
 
 const db = database('fulfillment');
 const app = server('fulfillment');

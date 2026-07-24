@@ -1,6 +1,6 @@
-const { server, listen } = require('../../shared/http');
+const { server, listen } = require('@techzone/config/http');
 const swaggerUi = require('swagger-ui-express');
-const openapi = require('../../../contracts/openapi.json');
+const openapi = require('@techzone/contracts/openapi.json');
 
 const app = server('gateway');
 const targets = {

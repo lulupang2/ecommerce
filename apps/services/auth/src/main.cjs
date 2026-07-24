@@ -1,15 +1,15 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('node:crypto');
 const { eq, asc } = require('drizzle-orm');
-const { database } = require('../../shared/db');
-const { users } = require('../../shared/schema');
-const { server, listen } = require('../../shared/http');
-const { publish, registerReliability } = require('../../shared/bus');
-const { requireAuth, requireCsrf, requireCookieCsrf, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
-const { publicJwks, signAccessToken, accessCookieOptions, refreshCookieOptions } = require('../../platform/tokens');
-const { hit, clear } = require('../../platform/rate-limit');
-const { validateDto } = require('../../platform/validation');
-const { LoginDto, RefreshDto, RegisterDto } = require('../../contracts/dtos');
+const { database } = require('@techzone/database/db');
+const { users } = require('@techzone/database/schema');
+const { server, listen } = require('@techzone/config/http');
+const { publish, registerReliability } = require('@techzone/messaging/bus');
+const { requireAuth, requireCsrf, requireCookieCsrf, requireRole, requireInternal, requirePermission } = require('@techzone/auth-platform/auth');
+const { publicJwks, signAccessToken, accessCookieOptions, refreshCookieOptions } = require('@techzone/auth-platform/tokens');
+const { hit, clear } = require('@techzone/auth-platform/rate-limit');
+const { validateDto } = require('@techzone/config/validation');
+const { LoginDto, RefreshDto, RegisterDto } = require('@techzone/contracts/dtos');
 
 const db = database('auth');
 const app = server('auth');

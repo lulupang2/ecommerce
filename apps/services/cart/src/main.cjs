@@ -1,6 +1,6 @@
-const { database } = require('../../shared/db');
-const { server, listen } = require('../../shared/http');
-const { optionalAuth, requireCsrf } = require('../../shared/auth');
+const { database } = require('@techzone/database/db');
+const { server, listen } = require('@techzone/config/http');
+const { optionalAuth, requireCsrf } = require('@techzone/auth-platform/auth');
 
 const db = database('cart');
 const app = server('cart');

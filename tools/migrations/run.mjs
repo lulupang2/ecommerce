@@ -6,54 +6,27 @@ import pg from 'pg';
 const { Client } = pg;
 const root = process.cwd();
 const services = {
-  auth: 'auth',
-  catalog: 'catalog',
-  cart: 'cart',
-  order: 'orders',
-  payment: 'payments',
-  inventory: 'inventory',
-  notification: 'notifications',
-  search: 'search',
-  media: 'media',
-  fulfillment: 'fulfillment',
-  procurement: 'procurement',
-  admin: 'admin',
+  auth: { database: 'auth', workspace: 'auth' },
+  catalog: { database: 'catalog', workspace: 'catalog' },
+  cart: { database: 'cart', workspace: 'cart' },
+  order: { database: 'orders', workspace: 'order' },
+  payment: { database: 'payments', workspace: 'payment' },
+  inventory: { database: 'inventory', workspace: 'inventory' },
+  notification: { database: 'notifications', workspace: 'notification' },
+  search: { database: 'search', workspace: 'search' },
+  media: { database: 'media', workspace: 'media' },
+  fulfillment: { database: 'fulfillment', workspace: 'fulfillment' },
+  procurement: { database: 'procurement', workspace: 'procurement' },
+  admin: { database: 'admin', workspace: 'admin-query' },
 };
-const platformSql = `
-  CREATE TABLE IF NOT EXISTS outbox_events (
-    id UUID PRIMARY KEY,event_type TEXT NOT NULL,payload JSONB NOT NULL,occurred_at TIMESTAMPTZ NOT NULL,
-    published_at TIMESTAMPTZ,attempts INTEGER NOT NULL DEFAULT 0,last_error TEXT
-  );
-  CREATE INDEX IF NOT EXISTS outbox_unpublished_idx ON outbox_events(occurred_at) WHERE published_at IS NULL;
-  CREATE TABLE IF NOT EXISTS inbox_events (
-    event_id UUID PRIMARY KEY,event_type TEXT NOT NULL,processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
-  );
-  CREATE TABLE IF NOT EXISTS dead_letters (
-    id UUID PRIMARY KEY,service TEXT NOT NULL,event_id UUID NOT NULL,event_type TEXT NOT NULL,envelope JSONB NOT NULL,
-    error TEXT NOT NULL,retry_count INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'pending',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),resolved_at TIMESTAMPTZ
-  );
-  CREATE TABLE IF NOT EXISTS idempotency_keys (
-    scope TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_hash TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'processing',
-    response_status INTEGER,response_body JSONB,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    expires_at TIMESTAMPTZ NOT NULL DEFAULT now()+interval '24 hours',PRIMARY KEY(scope,idempotency_key)
-  );
-`;
 
-function extractDdl(source) {
-  const statements = [];
-  const pattern = /db\.query\(`([\s\S]*?)`(?:,\s*\[[\s\S]*?\])?\)/g;
-  for (const match of source.matchAll(pattern)) {
-    const sql = match[1].trim();
-    if (sql.includes('${')) continue;
-    if (/^(CREATE|ALTER|DO \$\$)/i.test(sql)) statements.push(sql);
-  }
-  return statements;
-}
-
-async function migrateService(service, database) {
-  const source = await fs.readFile(path.join(root, 'backend', 'services', service, 'server.js'), 'utf8');
-  const statements = [...extractDdl(source), platformSql];
+async function migrateService(service, { database, workspace }) {
+  const baseline = await fs.readFile(path.join(root, 'apps', 'services', workspace, 'drizzle', '0000_baseline.sql'), 'utf8');
+  const reliability = await fs.readFile(path.join(root, 'packages', 'messaging', 'migrations', '0000_reliability.sql'), 'utf8');
+  const statements = [
+    ...baseline.split('-- statement-breakpoint').map(value => value.trim()).filter(Boolean),
+    reliability,
+  ];
   const user = encodeURIComponent(process.env.POSTGRES_USER || 'canvas');
   const password = encodeURIComponent(process.env.POSTGRES_PASSWORD || 'canvas');
   const connectionString = `postgres://${user}:${password}@${process.env.POSTGRES_HOST || 'localhost'}:${process.env.POSTGRES_PORT || 5432}/${database}`;
@@ -83,6 +56,11 @@ async function migrateService(service, database) {
   }
 }
 
-for (const [service, database] of Object.entries(services)) {
-  await migrateService(service, database);
+const requested = process.argv.find(argument => argument.startsWith('--service='))?.split('=')[1];
+const selected = requested
+  ? Object.entries(services).filter(([service, config]) => service === requested || config.workspace === requested)
+  : Object.entries(services);
+if (!selected.length) throw new Error(`Unknown service migration target: ${requested}`);
+for (const [service, config] of selected) {
+  await migrateService(service, config);
 }

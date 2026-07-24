@@ -1,12 +1,12 @@
 const { eq } = require('drizzle-orm');
-const { database } = require('../../shared/db');
-const { payments } = require('../../shared/schema');
-const { server, listen } = require('../../shared/http');
-const { publish, subscribe, registerReliability } = require('../../shared/bus');
-const { requireAuth, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
-const { idempotency } = require('../../platform/idempotency');
-const { validateDto } = require('../../platform/validation');
-const { PaymentConfirmDto, RefundDto } = require('../../contracts/dtos');
+const { database } = require('@techzone/database/db');
+const { payments } = require('@techzone/database/schema');
+const { server, listen } = require('@techzone/config/http');
+const { publish, subscribe, registerReliability } = require('@techzone/messaging/bus');
+const { requireAuth, requireRole, requireInternal, requirePermission } = require('@techzone/auth-platform/auth');
+const { idempotency } = require('@techzone/messaging/idempotency');
+const { validateDto } = require('@techzone/config/validation');
+const { PaymentConfirmDto, RefundDto } = require('@techzone/contracts/dtos');
 
 const db = database('payments');
 const app = server('payment');

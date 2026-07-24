@@ -1,7 +1,7 @@
-const { database } = require('../../shared/db');
-const { server, listen } = require('../../shared/http');
-const { publish, subscribe, registerReliability } = require('../../shared/bus');
-const { requireAuth, requireCsrf, requireRole, requirePermission } = require('../../shared/auth');
+const { database } = require('@techzone/database/db');
+const { server, listen } = require('@techzone/config/http');
+const { publish, subscribe, registerReliability } = require('@techzone/messaging/bus');
+const { requireAuth, requireCsrf, requireRole, requirePermission } = require('@techzone/auth-platform/auth');
 
 const db = database('admin');
 const app = server('admin');

@@ -1,7 +1,7 @@
-const { database } = require('../../shared/db');
-const { server, listen } = require('../../shared/http');
-const { publish, registerReliability } = require('../../shared/bus');
-const { requireAuth, requireRole, requireInternal, requirePermission } = require('../../shared/auth');
+const { database } = require('@techzone/database/db');
+const { server, listen } = require('@techzone/config/http');
+const { publish, registerReliability } = require('@techzone/messaging/bus');
+const { requireAuth, requireRole, requireInternal, requirePermission } = require('@techzone/auth-platform/auth');
 const sanitizeHtml = require('sanitize-html');
 
 const db = database('catalog');

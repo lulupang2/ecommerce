@@ -1,9 +1,9 @@
 const { eq, desc } = require('drizzle-orm');
-const { database } = require('../../shared/db');
-const { notifications } = require('../../shared/schema');
-const { server, listen } = require('../../shared/http');
-const { subscribe, registerReliability } = require('../../shared/bus');
-const { requireAuth, requireOwner } = require('../../shared/auth');
+const { database } = require('@techzone/database/db');
+const { notifications } = require('@techzone/database/schema');
+const { server, listen } = require('@techzone/config/http');
+const { subscribe, registerReliability } = require('@techzone/messaging/bus');
+const { requireAuth, requireOwner } = require('@techzone/auth-platform/auth');
 
 const db = database('notifications');
 const app = server('notification');

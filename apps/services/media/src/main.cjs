@@ -1,10 +1,10 @@
 const { eq } = require('drizzle-orm');
 const { S3Client, CreateBucketCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-const { database } = require('../../shared/db');
-const { mediaAssets } = require('../../shared/schema');
-const { server, listen } = require('../../shared/http');
-const { requireAuth, requireRole } = require('../../shared/auth');
+const { database } = require('@techzone/database/db');
+const { mediaAssets } = require('@techzone/database/schema');
+const { server, listen } = require('@techzone/config/http');
+const { requireAuth, requireRole } = require('@techzone/auth-platform/auth');
 
 const db = database('media');
 const app = server('media');

@@ -1,0 +1,29 @@
+{
+  "name": "@techzone/admin-query",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node --watch src/main.cjs",
+    "start": "node src/main.cjs",
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "migrate": "node ../../../tools/migrations/run.mjs --service=admin-query"
+  },
+  "dependencies": {
+    "@techzone/auth-platform": "*",
+    "@techzone/config": "*",
+    "@techzone/contracts": "*",
+    "@techzone/database": "*",
+    "@techzone/messaging": "*",
+    "@techzone/observability": "*",
+    "@nestjs/common": "^11.1.28"
+  },
+  "devDependencies": {
+    "@techzone/tsconfig": "*",
+    "@types/node": "^22.19.0",
+    "typescript": "^5.9.3"
+  }
+}
