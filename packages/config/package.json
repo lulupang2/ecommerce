@@ -6,7 +6,10 @@
   "exports": {
     "./validation": "./src/validation.cjs",
     "./errors": "./src/errors.cjs",
-    "./nest-runtime": "./src/nest-runtime.cjs",
+    "./nest-runtime": {
+      "types": "./src/nest-runtime.d.ts",
+      "default": "./src/nest-runtime.cjs"
+    },
     "./http": "./src/http.cjs"
   },
   "scripts": {

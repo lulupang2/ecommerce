@@ -1,9 +1,15 @@
 const { Controller, Get, Module, Res, ValidationPipe } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { SwaggerModule, DocumentBuilder } = require('@nestjs/swagger');
+const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
 const { client } = require('@techzone/observability/metrics');
+const { contextMiddleware } = require('@techzone/observability/context');
+const { metricsMiddleware } = require('@techzone/observability/metrics');
+const logger = require('@techzone/observability/logger');
 const { StandardExceptionFilter } = require('@techzone/config/errors');
 const { startTelemetry, stopTelemetry } = require('@techzone/observability/otel');
+const { hit } = require('@techzone/auth-platform/rate-limit');
 
 function createPlatformModule(service, readiness) {
   class PlatformController {
@@ -37,16 +43,74 @@ function createPlatformModule(service, readiness) {
   return ServiceModule;
 }
 
-async function bootstrapNest({ router, service, port, readiness }) {
+function createRootModule(featureModule, service, readiness) {
+  const PlatformModule = createPlatformModule(service, readiness);
+  class RootModule {}
+  Module({ imports: [PlatformModule, featureModule] })(RootModule);
+  return RootModule;
+}
+
+function configureHttp(app, service) {
+  app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
+  app.enableCors({
+    origin: process.env.CORS_ORIGIN?.split(',') || true,
+    credentials: true,
+    exposedHeaders: ['x-request-id', 'x-correlation-id', 'x-csrf-token'],
+  });
+  app.use(cookieParser());
+  app.use(contextMiddleware(service));
+  app.use(metricsMiddleware(service));
+  app.use((req, res, next) => {
+    const startedAt = Date.now();
+    res.on('finish', () => logger.info('http.request', {
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      durationMs: Date.now() - startedAt,
+      userId: req.user?.sub,
+    }));
+    next();
+  });
+  app.use(async (req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    if (req.path.startsWith('/health') || req.path === '/metrics') return next();
+    const limit = await hit(`rate:${service}:${req.ip}`, {
+      limit: Number(process.env.RATE_LIMIT_PER_MINUTE || 120),
+      windowSeconds: 60,
+      lockSeconds: 60,
+    });
+    res.setHeader('X-RateLimit-Remaining', String(limit.remaining));
+    if (!limit.allowed) {
+      return res.status(429).set('Retry-After', String(limit.retryAfter)).json({
+        code: 'RATE_LIMITED',
+        message: '요청이 너무 많습니다.',
+        requestId: req.requestId,
+        retryAfter: limit.retryAfter,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    next();
+  });
+}
+
+async function bootstrapNest({ module: featureModule, router, service, port, readiness, docsPath = '/docs' }) {
   await startTelemetry(service);
-  const ServiceModule = createPlatformModule(service, readiness);
-  const app = await NestFactory.create(ServiceModule, { logger: false, bodyParser: false });
+  const rootModule = featureModule
+    ? createRootModule(featureModule, service, readiness)
+    : createPlatformModule(service, readiness);
+  const app = await NestFactory.create(rootModule, {
+    logger: false,
+    bodyParser: router ? false : true,
+  });
+  if (featureModule) configureHttp(app, service);
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
   app.useGlobalFilters(new StandardExceptionFilter());
-  app.use(router);
+  if (router) app.use(router);
   app.enableShutdownHooks();
   const config = new DocumentBuilder().setTitle(`TECHZONE ${service}`).setVersion('1.0').addBearerAuth().build();
-  SwaggerModule.setup('/docs', app, SwaggerModule.createDocument(app, config));
+  SwaggerModule.setup(docsPath, app, SwaggerModule.createDocument(app, config));
   await app.listen(port, '0.0.0.0');
   const shutdown = async signal => {
     console.log(JSON.stringify({ level: 'info', service, message: 'shutdown.started', signal }));
@@ -66,4 +130,4 @@ async function bootstrapNest({ router, service, port, readiness }) {
   return app;
 }
 
-module.exports = { bootstrapNest, createPlatformModule };
+module.exports = { bootstrapNest, createPlatformModule, createRootModule, configureHttp };

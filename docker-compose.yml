@@ -72,7 +72,7 @@ services:
 
   auth:
     <<: *service
-    command: node apps/services/auth/src/main.cjs
+    command: node apps/services/auth/dist/main.js
     environment:
       <<: *common-env
       PORT: 3001
@@ -163,7 +163,7 @@ services:
 
   gateway:
     <<: *service
-    command: node apps/api-gateway/src/main.cjs
+    command: node apps/api-gateway/dist/main.js
     environment: { <<: *common-env, PORT: 8080, SERVICE_NAME: gateway, CATALOG_URL: http://catalog:3002, CART_URL: http://cart:3003, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, NOTIFICATION_URL: http://notification:3007, SEARCH_URL: http://search:3008, MEDIA_URL: http://media:3009, FULFILLMENT_URL: http://fulfillment:3010, PROCUREMENT_URL: http://procurement:3011, ADMIN_URL: http://admin:3012 }
     ports: ["18080:8080"]
     depends_on: [auth, catalog, cart, order, payment, inventory, notification, search, media, fulfillment, procurement, admin]
