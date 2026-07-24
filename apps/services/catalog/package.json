@@ -19,7 +19,8 @@
     "@techzone/database": "*",
     "@techzone/messaging": "*",
     "@techzone/observability": "*",
-    "@nestjs/common": "^11.1.28"
+    "@nestjs/common": "^11.1.28",
+    "sanitize-html": "^2.17.6"
   },
   "devDependencies": {
     "@techzone/tsconfig": "*",

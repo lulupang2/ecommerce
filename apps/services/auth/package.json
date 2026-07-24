@@ -19,7 +19,9 @@
     "@techzone/database": "*",
     "@techzone/messaging": "*",
     "@techzone/observability": "*",
-    "@nestjs/common": "^11.1.28"
+    "@nestjs/common": "^11.1.28",
+    "bcryptjs": "^3.0.2",
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@techzone/tsconfig": "*",

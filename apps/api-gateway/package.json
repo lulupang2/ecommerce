@@ -19,7 +19,8 @@
     "@techzone/database": "*",
     "@techzone/messaging": "*",
     "@techzone/observability": "*",
-    "@nestjs/common": "^11.1.28"
+    "@nestjs/common": "^11.1.28",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "@techzone/tsconfig": "*",

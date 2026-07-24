@@ -1,1 +1,36 @@
-{"name":"@techzone/config","version":"0.1.0","private":true,"type":"commonjs","exports":{"./validation":"./src/validation.cjs","./errors":"./src/errors.cjs","./nest-runtime":"./src/nest-runtime.cjs","./http":"./src/http.cjs"},"scripts":{"build":"node --check src/http.cjs","typecheck":"node --check src/http.cjs","lint":"node --check src/http.cjs","test":"node --test"}}
+{
+  "name": "@techzone/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "exports": {
+    "./validation": "./src/validation.cjs",
+    "./errors": "./src/errors.cjs",
+    "./nest-runtime": "./src/nest-runtime.cjs",
+    "./http": "./src/http.cjs"
+  },
+  "scripts": {
+    "build": "node --check src/http.cjs",
+    "typecheck": "node --check src/http.cjs",
+    "lint": "node --check src/http.cjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/core": "^11.1.28",
+    "@nestjs/platform-express": "^11.1.28",
+    "@nestjs/swagger": "^11.4.6",
+    "@techzone/auth-platform": "*",
+    "@techzone/database": "*",
+    "@techzone/messaging": "*",
+    "@techzone/observability": "*",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "helmet": "^8.3.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  }
+}

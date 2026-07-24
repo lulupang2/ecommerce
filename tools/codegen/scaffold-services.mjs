@@ -17,6 +17,21 @@ const services = [
   ['services/procurement', 'procurement', 'Procurement'],
   ['services/admin-query', 'admin-query', 'AdminQuery'],
 ];
+const serviceDependencies = {
+  'api-gateway': { 'swagger-ui-express': '^5.0.1' },
+  auth: { bcryptjs: '^3.0.2', 'drizzle-orm': '^0.45.2' },
+  catalog: { 'sanitize-html': '^2.17.6' },
+  fulfillment: { jsonwebtoken: '^9.0.2' },
+  inventory: { 'drizzle-orm': '^0.45.2' },
+  media: {
+    '@aws-sdk/client-s3': '^3.1093.0',
+    '@aws-sdk/s3-request-presigner': '^3.1093.0',
+    'drizzle-orm': '^0.45.2',
+  },
+  notification: { 'drizzle-orm': '^0.45.2' },
+  order: { 'drizzle-orm': '^0.45.2', jsonwebtoken: '^9.0.2' },
+  payment: { 'drizzle-orm': '^0.45.2' },
+};
 
 for (const [relative, packageName, className] of services) {
   const app = path.join(root, 'apps', relative);
@@ -54,6 +69,7 @@ for (const [relative, packageName, className] of services) {
       '@techzone/messaging': '*',
       '@techzone/observability': '*',
       '@nestjs/common': '^11.1.28',
+      ...(serviceDependencies[packageName] ?? {}),
     },
     devDependencies: {
       '@techzone/tsconfig': '*',

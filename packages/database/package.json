@@ -1,1 +1,20 @@
-{"name":"@techzone/database","version":"0.1.0","private":true,"type":"commonjs","exports":{"./db":"./src/db.cjs","./schema":"./src/schema.cjs"},"scripts":{"build":"node -e \"require('./src/db.cjs')\"","typecheck":"node -e \"require('./src/db.cjs')\"","lint":"node -e \"require('./src/db.cjs')\"","test":"node --test"}}
+{
+  "name": "@techzone/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "exports": {
+    "./db": "./src/db.cjs",
+    "./schema": "./src/schema.cjs"
+  },
+  "scripts": {
+    "build": "node -e \"require('./src/db.cjs')\"",
+    "typecheck": "node -e \"require('./src/db.cjs')\"",
+    "lint": "node -e \"require('./src/db.cjs')\"",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.22.0"
+  }
+}
