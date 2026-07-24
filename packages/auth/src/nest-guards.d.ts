@@ -9,5 +9,8 @@ export declare class CookieCsrfGuard {
 export declare class InternalGuard {
   canActivate(context: unknown): boolean;
 }
+export declare class OptionalAuthGuard {
+  canActivate(context: unknown): Promise<boolean>;
+}
 export function RoleGuard(role: string): Type<{ canActivate(context: unknown): boolean }>;
 export function PermissionGuard(permission: string): Type<{ canActivate(context: unknown): boolean }>;

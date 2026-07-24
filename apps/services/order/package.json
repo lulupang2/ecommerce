@@ -4,8 +4,8 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "dev": "node --watch src/main.cjs",
-    "start": "node src/main.cjs",
+    "dev": "npm run build && node --watch dist/main.js",
+    "start": "node dist/main.js",
     "build": "tsc",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
@@ -20,11 +20,14 @@
     "@techzone/messaging": "*",
     "@techzone/observability": "*",
     "@nestjs/common": "^11.1.28",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
     "drizzle-orm": "^0.45.2",
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
     "@techzone/tsconfig": "*",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.19.0",
     "typescript": "^5.9.3"
   }

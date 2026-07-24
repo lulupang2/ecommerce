@@ -45,6 +45,27 @@ class AuthGuard {
 }
 Injectable()(AuthGuard);
 
+class OptionalAuthGuard {
+  async canActivate(context) {
+    const request = context.switchToHttp().getRequest();
+    const credential = readToken(request);
+    if (!credential.token) return true;
+    try {
+      request.user = await verifyAccessToken(credential.token);
+      request.authSource = credential.source;
+      setContextFields({ actorId: request.user.sub, userId: request.user.sub });
+      if (!csrfValid(request)) {
+        throw new ForbiddenException({ code: 'CSRF_INVALID', message: 'CSRF 토큰이 올바르지 않습니다.' });
+      }
+    } catch (error) {
+      if (error instanceof ForbiddenException) throw error;
+      request.authError = 'INVALID_TOKEN';
+    }
+    return true;
+  }
+}
+Injectable()(OptionalAuthGuard);
+
 class CookieCsrfGuard {
   canActivate(context) {
     const request = context.switchToHttp().getRequest();
@@ -101,6 +122,7 @@ module.exports = {
   AuthGuard,
   CookieCsrfGuard,
   InternalGuard,
+  OptionalAuthGuard,
   PermissionGuard,
   RoleGuard,
 };

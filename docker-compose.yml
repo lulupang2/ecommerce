@@ -100,19 +100,19 @@ services:
 
   order:
     <<: *service
-    command: node apps/services/order/src/main.cjs
+    command: node apps/services/order/dist/main.js
     environment: { <<: *common-env, PORT: 3004, SERVICE_NAME: order, DATABASE_URL: postgres://canvas:canvas@postgres:5432/orders, CATALOG_URL: http://catalog:3002 }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
 
   payment:
     <<: *service
-    command: node apps/services/payment/src/main.cjs
+    command: node apps/services/payment/dist/main.js
     environment: { <<: *common-env, PORT: 3005, SERVICE_NAME: payment, DATABASE_URL: postgres://canvas:canvas@postgres:5432/payments, TOSS_SECRET_KEY: "${TOSS_SECRET_KEY:-}" }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
 
   inventory:
     <<: *service
-    command: node apps/services/inventory/src/main.cjs
+    command: node apps/services/inventory/dist/main.js
     environment: { <<: *common-env, PORT: 3006, SERVICE_NAME: inventory, DATABASE_URL: postgres://canvas:canvas@postgres:5432/inventory, CATALOG_URL: http://catalog:3002 }
     depends_on: { migration: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
 

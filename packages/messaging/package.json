@@ -5,7 +5,10 @@
   "type": "commonjs",
   "exports": {
     "./bus": "./src/bus.cjs",
-    "./idempotency": "./src/idempotency.cjs"
+    "./idempotency": {
+      "types": "./src/idempotency.d.ts",
+      "default": "./src/idempotency.cjs"
+    }
   },
   "scripts": {
     "build": "node --check src/bus.cjs",
