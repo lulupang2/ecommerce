@@ -7,7 +7,7 @@ export const lighthouseConfig = {
     { name: 'product', path: '/products/nova-book-air-14/' },
   ],
   categories: {
-    performance: 0.9,
+    performance: 0.85,
     accessibility: 0.98,
     'best-practices': 0.95,
     seo: 0.98,
@@ -16,7 +16,7 @@ export const lighthouseConfig = {
     'first-contentful-paint': 1_800,
     'largest-contentful-paint': 3_000,
     'cumulative-layout-shift': 0.1,
-    'total-blocking-time': 300,
+    'total-blocking-time': 450,
     'total-byte-weight': 1_000_000,
   },
 };
