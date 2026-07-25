@@ -6,6 +6,7 @@ import StoreShell from '@/components/store/store-shell';
 import ProductCard from '@/components/store/product-card';
 import { api, money, statusLabel } from '@techzone/api-client/store';
 import { readSession } from '@techzone/api-client/session';
+import { readRecentlyViewed } from '@/lib/recent-products';
 
 export default function Page() {
   const [recent, setRecent] = useState<any[]>([]);
@@ -16,7 +17,7 @@ export default function Page() {
 
   useEffect(() => {
     const activeSession = readSession();
-    setRecent(JSON.parse(localStorage.getItem('techzone-recent') || '[]'));
+    setRecent(readRecentlyViewed());
 
     if (!activeSession?.user) {
       setLoadingOrders(false);
@@ -103,8 +104,8 @@ export default function Page() {
         </section>
 
         <Guide />
-        <Section title="찜한 상품" items={wishlist} icon={<Heart size={18} />} />
-        <Section title="최근 본 상품" items={recent} icon={<ShieldCheck size={18} />} />
+        <Section id="wishlist-products" title="찜한 상품" items={wishlist} icon={<Heart size={18} />} />
+        <Section id="recent-products" title="최근 본 상품" items={recent} icon={<ShieldCheck size={18} />} />
       </main>
     </StoreShell>
   );
@@ -153,9 +154,9 @@ function Guide() {
   );
 }
 
-function Section({ title, items, icon }) {
+function Section({ id, title, items, icon }) {
   return (
-    <section className="mt-14">
+    <section id={id} className="mt-14 scroll-mt-24">
       <div className="flex items-center gap-2">
         <span className="text-cyan-700">{icon}</span>
         <h2 className="text-2xl font-black">{title}</h2>

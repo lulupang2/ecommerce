@@ -21,6 +21,7 @@ import ProductCard from './product-card';
 import { api, money, optionText } from '@techzone/api-client/store';
 import { readSession } from '@techzone/api-client/session';
 import { storeImageUrl } from '@/lib/store-image';
+import { saveRecentlyViewed } from '@/lib/recent-products';
 
 export default function ProductDetailView({ slug = null, id = null, initialProduct = null }) {
   return <StoreShell><ProductDetail slug={slug} id={id} initialProduct={initialProduct} /></StoreShell>;
@@ -42,8 +43,7 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
         if (!initialProduct) setProduct(data);
         setVariantId(data.variants?.[0]?.id || '');
         setImage(data.images?.[0]?.url || data.image);
-        const recent = JSON.parse(localStorage.getItem('techzone-recent') || '[]').filter(value => value.id !== data.id);
-        localStorage.setItem('techzone-recent', JSON.stringify([{ id: data.id, slug: data.slug, name: data.name, image: data.image, price: data.price }, ...recent].slice(0, 8)));
+        saveRecentlyViewed(data);
         setWish(JSON.parse(localStorage.getItem('techzone-wishlist') || '[]').includes(data.id));
     }
     if (initialProduct) {
