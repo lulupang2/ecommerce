@@ -163,6 +163,7 @@ GitHub Actions는 정적 검증, 계약 테스트, Docker 통합, 보안, E2E, r
 
 - [PRD](docs/PRD.md): 제품 요구사항과 완료 기준
 - [SSOT](docs/SSOT.md): 상태 ENUM, API, 데이터 불변식, 정책 기준
+- [공개 데모 배포](docs/DEPLOYMENT.md): HTTPS, 비밀값 생성, 사전 점검, 백업·복구
 
 ## 의도적으로 제외한 범위
 

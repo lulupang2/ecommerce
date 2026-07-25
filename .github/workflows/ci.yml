@@ -24,6 +24,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:unit
       - run: npm run test:contract
+      - run: npm run test:deployment
       - run: npm run build
       - run: npm run build:mobile
 
