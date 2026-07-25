@@ -42,6 +42,7 @@
     "db:migrate": "node tools/migrations/run.mjs",
     "db:seed": "node tools/seeds/run.mjs",
     "k8s:render": "node tools/kubernetes/render.mjs",
+    "k8s:validate": "node tools/kubernetes/validate.mjs",
     "clean": "turbo run clean"
   },
   "devDependencies": {
