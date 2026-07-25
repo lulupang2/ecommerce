@@ -90,11 +90,16 @@ test('로그인 회원의 찜 상품이 서버에 저장되어 마이페이지�
   const slug = 'nova-book-air-14';
 
   await page.goto('/login/');
-  await page.getByRole('button', { name: '회원가입' }).click();
-  await page.getByLabel('이름').fill('찜 테스트 고객');
+  const registerButton = page.getByRole('button', { name: '회원가입' });
+  const nameField = page.getByLabel('이름');
+  await expect.poll(async () => {
+    await registerButton.click();
+    return nameField.isVisible();
+  }, { message: '회원가입 폼이 hydration 후 표시되어야 합니다.' }).toBe(true);
+  await nameField.fill('찜 테스트 고객');
   await page.getByLabel('이메일').fill(email);
   await page.getByLabel('비밀번호').fill(password);
-  await page.getByRole('button', { name: /계정 만들기/ }).click();
+  await page.getByRole('button', { name: /계정 만들기/ }).click({ force: true });
   await expect(page.getByRole('status')).toContainText('로그인되었습니다.');
 
   await page.goto(`/products/${slug}/`);
@@ -108,10 +113,19 @@ test('로그인 회원의 찜 상품이 서버에 저장되어 마이페이지�
   expect((await wishlistResponse).status()).toBe(201);
 
   await page.evaluate(() => localStorage.removeItem('techzone-wishlist'));
+  await page.reload();
+  await expect(page.getByRole('button', { name: '찜 해제' })).toBeVisible();
+
   await page.goto('/mypage/');
   const wishlistSection = page.locator('#wishlist-products');
   await expect(wishlistSection.getByRole('link', { name: productName, exact: true }).first()).toHaveAttribute(
     'href',
     `/products/${slug}/`,
   );
+
+  await page.goto('/login/');
+  await page.getByRole('button', { name: /로그아웃/ }).click({ force: true });
+  await expect(page.getByRole('status')).toContainText('로그아웃되었습니다.');
+  await page.goto(`/products/${slug}/`);
+  await expect(page.getByRole('button', { name: '찜하기' })).toBeVisible();
 });

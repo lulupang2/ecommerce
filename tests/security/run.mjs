@@ -38,6 +38,7 @@ const crossWishlist = await raw(`/wishlists/${second.user.id}`, { headers: { aut
 assert.equal(crossWishlist.response.status, 403, '다른 회원의 찜 목록 접근을 차단해야 합니다.');
 const ownWishlist = await ok(`/wishlists/${first.user.id}`, { headers: { authorization: `Bearer ${first.accessToken}` } });
 assert.ok(Array.isArray(ownWishlist.data.items), '본인의 찜 목록은 정상 조회할 수 있어야 합니다.');
+assert.match(ownWishlist.response.headers.get('cache-control') || '', /no-store/, '회원별 찜 목록은 캐시하지 않아야 합니다.');
 const crossWishlistMutation = await raw(`/wishlists/${second.user.id}/${crypto.randomUUID()}`, {
   method: 'POST',
   headers: { authorization: `Bearer ${first.accessToken}` },

@@ -1,25 +1,17 @@
 'use client';
-import { useEffect, useState } from 'react';
 import { Heart, ShoppingCart } from 'lucide-react';
-import { api, money } from '@techzone/api-client/store';
-import { readSession } from '@techzone/api-client/session';
+import { money } from '@techzone/api-client/store';
 import { storeImageUrl } from '@/lib/store-image';
+import { useStore } from './store-shell';
 
 export default function ProductCard({ product, onAdd = null, compact = false, priority = false }) {
-  const [wish,setWish]=useState(false);
-  useEffect(()=>setWish(JSON.parse(localStorage.getItem('techzone-wishlist')||'[]').includes(product.id)),[product.id]);
-  function toggleWish(){
-    const values=JSON.parse(localStorage.getItem('techzone-wishlist')||'[]');
-    const next=wish?values.filter(id=>id!==product.id):[...new Set([...values,product.id])];
-    localStorage.setItem('techzone-wishlist',JSON.stringify(next));setWish(!wish);
-    const session=readSession();
-    if(session)api(`/wishlists/${session.user.id}/${product.id}`,{method:wish?'DELETE':'POST',headers:{authorization:`Bearer ${session.accessToken||session.token}`}}).catch(()=>{});
-  }
+  const {wishlistIds,toggleWishlist}=useStore();
+  const wish=wishlistIds.includes(product.id);
   const href = `/products/${product.slug || product.id}/`;
   return <article className="group min-w-0">
     <div className="relative overflow-hidden rounded-2xl border border-slate-100 bg-[#f4f6f8]">
       {product.discountRate > 0 && <span className="absolute left-3 top-3 z-10 rounded-md bg-rose-700 px-2 py-1 text-[11px] font-black text-white">{product.discountRate}%</span>}
-      <button onClick={toggleWish} aria-label={wish?'찜 해제':'찜하기'} aria-pressed={wish} className={`absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-full bg-white shadow-sm ${wish?'text-rose-500':''}`}><Heart size={17} className={wish?'fill-current':''}/></button>
+      <button onClick={()=>toggleWishlist(product.id)} aria-label={wish?'찜 해제':'찜하기'} aria-pressed={wish} className={`absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-full bg-white shadow-sm ${wish?'text-rose-500':''}`}><Heart size={17} className={wish?'fill-current':''}/></button>
       <a href={href}><img src={storeImageUrl(product.image,600)} alt={product.name} width="600" height={compact?600:667} loading={priority?'eager':'lazy'} fetchPriority={priority?'high':undefined} className={`w-full object-cover transition duration-500 group-hover:scale-105 ${compact?'aspect-square':'aspect-[.9]'}`}/></a>
       {onAdd&&<button onClick={() => onAdd(product)} className="absolute bottom-3 right-3 grid h-10 w-10 translate-y-2 place-items-center rounded-full bg-slate-950 text-white opacity-0 shadow-lg transition group-hover:translate-y-0 group-hover:opacity-100" aria-label="장바구니 담기"><ShoppingCart size={17}/></button>}
     </div>
