@@ -4,7 +4,7 @@ export const lighthouseConfig = {
   pages: [
     { name: 'home', path: '/' },
     { name: 'shop', path: '/shop/' },
-    { name: 'product', path: '/products/techzone-oled-monitor-32/' },
+    { name: 'product', path: '/products/nova-book-air-14/' },
   ],
   categories: {
     performance: 0.9,
