@@ -162,6 +162,7 @@ npm run test:security
 npm run test:integration
 npm run test:storefront
 npm run test:browser-e2e
+npm run test:accessibility
 npm run test:resilience
 
 # 배포 산출물

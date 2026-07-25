@@ -122,7 +122,7 @@ export default function AdminShell({ children }) {
       <div className="flex h-18 items-center justify-between border-b border-white/10 px-5">
         {!collapsed && (
           <Link href="/" className="text-lg font-black tracking-[-.08em] text-white">
-            TECH<span className="text-cyan-400">ZONE</span><small className="ml-2 text-[9px] tracking-normal text-slate-500">OPS</small>
+            TECH<span className="text-cyan-400">ZONE</span><small className="ml-2 text-[9px] tracking-normal text-slate-400">OPS</small>
           </Link>
         )}
         <button aria-label={collapsed ? '사이드바 펼치기' : '사이드바 접기'} onClick={() => setCollapsed(value => !value)} className="hidden rounded-lg p-2 text-slate-400 hover:bg-white/10 lg:block">
@@ -130,10 +130,10 @@ export default function AdminShell({ children }) {
         </button>
         <button aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)} className="rounded-lg p-2 lg:hidden"><X size={19} /></button>
       </div>
-      <nav className="flex-1 overflow-y-auto px-3 py-5">
+      <nav aria-label="관리자 업무 메뉴" className="flex-1 overflow-y-auto px-3 py-5">
         {visibleGroups.map(group => (
           <section className="mb-6" key={group.label}>
-            {!collapsed && <p className="mb-2 px-3 text-[10px] font-bold tracking-[.16em] text-slate-500">{group.label}</p>}
+            {!collapsed && <p className="mb-2 px-3 text-[10px] font-bold tracking-[.16em] text-slate-400">{group.label}</p>}
             <div className="grid gap-1">
               {group.items.map(item => {
                 const Icon = item.icon;
@@ -161,6 +161,7 @@ export default function AdminShell({ children }) {
 
   return (
     <div className="min-h-screen bg-[#f5f7fb] text-slate-950">
+      <a href="#admin-main" className="fixed left-4 top-4 z-[100] -translate-y-24 rounded-lg bg-slate-950 px-4 py-3 text-sm font-bold text-white transition focus:translate-y-0">본문 바로가기</a>
       <aside className={`fixed inset-y-0 left-0 z-40 hidden transition-all duration-200 lg:block ${collapsed ? 'w-20' : 'w-64'}`}>{sidebar}</aside>
       {mobileOpen && (
         <>
@@ -170,19 +171,19 @@ export default function AdminShell({ children }) {
       )}
       <div className={`transition-all duration-200 ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
         <header className="sticky top-0 z-30 flex h-18 items-center gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur md:px-7">
-          <button onClick={() => setMobileOpen(true)} className="rounded-xl border border-slate-200 p-2 lg:hidden"><Menu size={19} /></button>
-          <form className="relative hidden max-w-md flex-1 md:block" onSubmit={event => {
+          <button aria-label="관리자 메뉴 열기" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)} className="rounded-xl border border-slate-200 p-2 lg:hidden"><Menu size={19} /></button>
+          <form role="search" className="relative hidden max-w-md flex-1 md:block" onSubmit={event => {
             event.preventDefault();
             const value = new FormData(event.currentTarget).get('q');
             if (value) window.location.href = `/admin/products/manage/?q=${encodeURIComponent(String(value))}`;
           }}>
             <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
-            <input name="q" placeholder="주문번호, 상품명, SKU 통합 검색" className="w-full rounded-xl bg-slate-100 py-2 pl-10 pr-4 text-sm outline-none ring-cyan-500 focus:ring-2" />
+            <input aria-label="관리자 통합 검색" name="q" placeholder="주문번호, 상품명, SKU 통합 검색" className="w-full rounded-xl bg-slate-100 py-2 pl-10 pr-4 text-sm outline-none ring-cyan-500 focus:ring-2" />
           </form>
           <div className="ml-auto flex items-center gap-2">
             <label className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold md:flex">
               <Warehouse size={15} className="text-slate-400" />
-              <select value={warehouse} onChange={event => {
+              <select aria-label="조회 창고" value={warehouse} onChange={event => {
                 setWarehouse(event.target.value);
                 localStorage.setItem('techzone-admin-warehouse', event.target.value);
                 window.dispatchEvent(new CustomEvent('techzone:warehouse', { detail: event.target.value }));
@@ -192,20 +193,20 @@ export default function AdminShell({ children }) {
               </select>
               <ChevronDown size={13} />
             </label>
-            <Link href="/alerts/" className="relative rounded-xl border border-slate-200 p-2.5 text-slate-500 hover:bg-slate-50">
+            <Link aria-label={`운영 알림 ${alerts.length}건`} href="/alerts/" className="relative rounded-xl border border-slate-200 p-2.5 text-slate-500 hover:bg-slate-50">
               <Bell size={18} />
-              {alerts.length > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white">{Math.min(alerts.length, 99)}</span>}
+              {alerts.length > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-700 px-1 text-[10px] font-black text-white">{Math.min(alerts.length, 99)}</span>}
             </Link>
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 p-1.5 pr-3">
               <span className="grid h-8 w-8 place-items-center rounded-lg bg-cyan-50 text-cyan-700"><UserRound size={17} /></span>
               <div className="hidden leading-tight sm:block">
                 <p className="text-xs font-bold">{session?.user?.name || '관리자'}</p>
-                <p className="text-[10px] text-slate-400">{roleLabel(session?.user?.adminRole)}</p>
+                <p className="text-[10px] text-slate-600">{roleLabel(session?.user?.adminRole)}</p>
               </div>
             </div>
           </div>
         </header>
-        {children}
+        <div id="admin-main" tabIndex={-1}>{children}</div>
       </div>
     </div>
   );

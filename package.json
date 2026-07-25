@@ -42,6 +42,7 @@
     "test:integration": "node tests/integration/run.mjs",
     "test:storefront": "node tests/storefront-e2e/run.mjs",
     "test:browser-e2e": "playwright test",
+    "test:accessibility": "playwright test --grep @a11y",
     "test:admin-e2e": "playwright test --project=admin",
     "test:unit": "node --test tests/unit/*.test.js",
     "test:contract": "node tests/contract/run.mjs",
@@ -55,6 +56,7 @@
     "clean": "turbo run clean"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
     "@playwright/test": "^1.62.0",
     "eslint": "^9.39.2",
     "turbo": "^2.5.6",
