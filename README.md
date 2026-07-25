@@ -134,6 +134,7 @@ RabbitMQ 중단 후 미발행 outbox가 복구되는지도 자동 테스트합�
 
 ## 설계 문서
 
+- [포트폴리오 데모 시나리오](docs/DEMO.md)
 - [아키텍처와 주문 Saga](docs/ARCHITECTURE.md)
 - [기술 의사결정과 트레이드오프](docs/DECISIONS.md)
 - [DB 소유권과 핵심 불변식](docs/DATA_MODEL.md)
