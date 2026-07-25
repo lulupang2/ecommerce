@@ -83,3 +83,35 @@ test('상품 상세에서 본 상품을 홈의 최근 본 상품에서 다시 �
   );
   await expect(recentSection.getByRole('button', { name: '장바구니 담기' })).toHaveCount(0);
 });
+
+test('로그인 회원의 찜 상품이 서버에 저장되어 마이페이지에 표시된다', async ({ page }) => {
+  const email = `wishlist-${Date.now()}-${test.info().project.name}@techzone.local`;
+  const password = 'Wishlist1234!';
+  const slug = 'nova-book-air-14';
+
+  await page.goto('/login/');
+  await page.getByRole('button', { name: '회원가입' }).click();
+  await page.getByLabel('이름').fill('찜 테스트 고객');
+  await page.getByLabel('이메일').fill(email);
+  await page.getByLabel('비밀번호').fill(password);
+  await page.getByRole('button', { name: /계정 만들기/ }).click();
+  await expect(page.getByRole('status')).toContainText('로그인되었습니다.');
+
+  await page.goto(`/products/${slug}/`);
+  const productName = (await page.getByRole('heading', { level: 1 }).textContent())?.trim();
+  expect(productName).toBeTruthy();
+  const wishlistResponse = page.waitForResponse(response => (
+    response.url().includes('/api/wishlists/')
+    && response.request().method() === 'POST'
+  ));
+  await page.getByRole('button', { name: '찜하기' }).click();
+  expect((await wishlistResponse).status()).toBe(201);
+
+  await page.evaluate(() => localStorage.removeItem('techzone-wishlist'));
+  await page.goto('/mypage/');
+  const wishlistSection = page.locator('#wishlist-products');
+  await expect(wishlistSection.getByRole('link', { name: productName, exact: true }).first()).toHaveAttribute(
+    'href',
+    `/products/${slug}/`,
+  );
+});

@@ -180,6 +180,14 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
 
       <div className="fixed inset-x-0 bottom-[64px] z-30 border-t bg-white p-3 shadow-2xl md:hidden">
         <div className="mx-auto flex max-w-[520px] gap-2">
+          <button
+            onClick={toggleWish}
+            aria-label={wish ? '찜 해제' : '찜하기'}
+            aria-pressed={wish}
+            className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl border ${wish ? 'border-rose-300 bg-rose-50 text-rose-500' : 'border-slate-300'}`}
+          >
+            <Heart className={wish ? 'fill-current' : ''} size={20} />
+          </button>
           <button onClick={() => cart(false)} className="h-12 flex-1 rounded-xl border-2 border-slate-950 font-black text-slate-950">장바구니</button>
           <button onClick={() => cart(true)} className="h-12 flex-1 rounded-xl bg-slate-950 font-black text-white">바로구매</button>
         </div>
@@ -270,7 +278,7 @@ function PurchaseActions({ quantity, setQuantity, wish, toggleWish, cart }) {
         <b className="w-8 text-center">{quantity}</b>
         <button onClick={() => setQuantity(Math.min(20, quantity + 1))} className="p-4"><Plus size={15} /></button>
       </div>
-      <button onClick={toggleWish} className={`grid w-14 place-items-center rounded-xl border ${wish ? 'border-rose-300 bg-rose-50 text-rose-500' : ''}`}><Heart className={wish ? 'fill-current' : ''} /></button>
+      <button onClick={toggleWish} aria-label={wish ? '찜 해제' : '찜하기'} aria-pressed={wish} className={`grid w-14 place-items-center rounded-xl border ${wish ? 'border-rose-300 bg-rose-50 text-rose-500' : ''}`}><Heart className={wish ? 'fill-current' : ''} /></button>
       <button onClick={() => cart(false)} className="flex-1 rounded-xl border-2 border-slate-950 font-black text-slate-950"><ShoppingBag className="mr-2 inline" size={17} />장바구니</button>
       <button onClick={() => cart(true)} className="flex-1 rounded-xl bg-slate-950 font-black text-white">바로구매</button>
     </div>

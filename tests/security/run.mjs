@@ -32,6 +32,18 @@ const crossCart = await raw(`/carts/${second.user.id}`, { headers: { authorizati
 assert.equal(crossCart.response.status, 403, '다른 회원의 장바구니 접근을 차단해야 합니다.');
 const crossOrders = await raw(`/orders?userId=${second.user.id}`, { headers: { authorization: `Bearer ${first.accessToken}` } });
 assert.equal(crossOrders.response.status, 403, '다른 회원의 주문 목록 접근을 차단해야 합니다.');
+const anonymousWishlist = await raw(`/wishlists/${first.user.id}`);
+assert.equal(anonymousWishlist.response.status, 401, '찜 목록은 로그인한 회원만 조회할 수 있어야 합니다.');
+const crossWishlist = await raw(`/wishlists/${second.user.id}`, { headers: { authorization: `Bearer ${first.accessToken}` } });
+assert.equal(crossWishlist.response.status, 403, '다른 회원의 찜 목록 접근을 차단해야 합니다.');
+const ownWishlist = await ok(`/wishlists/${first.user.id}`, { headers: { authorization: `Bearer ${first.accessToken}` } });
+assert.ok(Array.isArray(ownWishlist.data.items), '본인의 찜 목록은 정상 조회할 수 있어야 합니다.');
+const crossWishlistMutation = await raw(`/wishlists/${second.user.id}/${crypto.randomUUID()}`, {
+  method: 'POST',
+  headers: { authorization: `Bearer ${first.accessToken}` },
+  body: '{}',
+});
+assert.equal(crossWishlistMutation.response.status, 403, '다른 회원의 찜 목록을 변경할 수 없어야 합니다.');
 
 const rotated = (await ok('/auth/refresh', {
   method: 'POST',
@@ -79,4 +91,11 @@ assert.equal(acceptedCsrf.response.status, 201, '정상 CSRF 토큰은 허용해
 
 const jwks = (await ok('/.well-known/jwks.json')).data;
 assert.ok(jwks.keys.some(key => key.alg === 'RS256' && key.use === 'sig'), 'JWKS는 RS256 공개키를 제공해야 합니다.');
-console.log(JSON.stringify({ status: 'passed', ownership: true, refreshReuseDetection: true, csrf: true, jwks: true }));
+console.log(JSON.stringify({
+  status: 'passed',
+  ownership: true,
+  wishlistOwnership: true,
+  refreshReuseDetection: true,
+  csrf: true,
+  jwks: true,
+}));
