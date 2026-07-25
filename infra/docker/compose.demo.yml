@@ -1,0 +1,44 @@
+services:
+  web:
+    ports:
+      - "${PUBLIC_BIND_ADDRESS:-127.0.0.1}:15173:8080"
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      DEMO_DOMAIN: "${DEMO_DOMAIN:?DEMO_DOMAIN is required}"
+      ACME_EMAIL: "${ACME_EMAIL:?ACME_EMAIL is required}"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./infra/docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_started
+
+  otel-collector:
+    profiles: [observability]
+
+  prometheus:
+    profiles: [observability]
+
+  tempo:
+    profiles: [observability]
+
+  loki:
+    profiles: [observability]
+
+  promtail:
+    profiles: [observability]
+
+  grafana:
+    profiles: [observability]
+
+volumes:
+  caddy-data:
+  caddy-config:
