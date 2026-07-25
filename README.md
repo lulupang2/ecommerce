@@ -22,6 +22,14 @@ TECHZONE은 테크·IT 기기 쇼핑몰을 주제로 만든 포트폴리오용 �
 7. 관리자에서 주문 상태 변경, 배송 처리, 반품·환불, 재고 조정, 상품 등록, CMS 진열, 쿠폰 운영을 확인합니다.
 8. Grafana와 CI에서 서비스 healthcheck, 통합 테스트, resilience 테스트 결과를 확인합니다.
 
+## 화면 미리보기
+
+아래 이미지는 `npm run demo:screenshots`로 재생성할 수 있습니다. Playwright가 API 응답을 mock해 백엔드 전체를 띄우지 않아도 포트폴리오 핵심 화면을 캡처합니다.
+
+| 고객 상품 상세 | 관리자 스토어 CMS | 관리자 쿠폰 운영 |
+| --- | --- | --- |
+| ![고객 상품 상세](docs/assets/storefront-product-detail.png) | ![관리자 스토어 CMS](docs/assets/admin-storefront-cms.png) | ![관리자 쿠폰 운영](docs/assets/admin-coupon-ops.png) |
+
 ## 구현 범위
 
 | 영역 | 구현 내용 |

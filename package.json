@@ -31,6 +31,7 @@
     "backend:gateway": "npm run start -w @techzone/api-gateway",
     "ms:up": "docker compose up --build",
     "mobile:sync": "npm run sync -w @techzone/mobile",
+    "demo:screenshots": "node tools/demo/capture-screenshots.mjs",
     "test:integration": "node tests/integration/run.mjs",
     "test:storefront": "node tests/storefront-e2e/run.mjs",
     "test:browser-e2e": "playwright test",
