@@ -4,9 +4,18 @@
   "private": true,
   "type": "commonjs",
   "exports": {
-    ".": "./dist/index.js",
-    "./dtos": "./dist/dtos.js",
-    "./events": "./dist/events.js",
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./dtos": {
+      "types": "./src/dtos.ts",
+      "default": "./dist/dtos.js"
+    },
+    "./events": {
+      "types": "./src/events.ts",
+      "default": "./dist/events.js"
+    },
     "./openapi.json": "./schemas/openapi.json",
     "./event-envelope.schema.json": "./schemas/event-envelope.schema.json"
   },
