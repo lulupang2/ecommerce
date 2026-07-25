@@ -34,12 +34,15 @@ if (compose.status !== 0) {
   throw new Error(`Demo Compose configuration is invalid: ${(compose.stderr || compose.stdout).trim()}`);
 }
 
-const shell = spawnSync('bash', [
-  '-n',
-  process.platform === 'win32'
-    ? 'tools/deployment/remote-release.sh'
-    : path.join(root, 'tools', 'deployment', 'remote-release.sh'),
-], { cwd: root, encoding: 'utf8' });
+const releaseScript = await fs.readFile(
+  path.join(root, 'tools', 'deployment', 'remote-release.sh'),
+  'utf8',
+);
+const shell = spawnSync('bash', ['-n'], {
+  cwd: root,
+  encoding: 'utf8',
+  input: releaseScript.replace(/\r\n/g, '\n'),
+});
 
 if (shell.error) throw shell.error;
 if (shell.status !== 0) {
