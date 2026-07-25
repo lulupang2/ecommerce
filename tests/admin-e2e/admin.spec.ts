@@ -10,6 +10,18 @@ test('관리자가 로그인하여 대시보드와 상품 목록을 운영할 �
   await expect(page.getByText('총매출', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('주문 상태', { exact: true }).first()).toBeVisible();
 
+  const firstOrderNumber = (await page.locator('table tbody tr').first().locator('td').first().innerText()).trim();
+  const recentOrderLink = page.locator(`a[href="/admin/orders/?q=${encodeURIComponent(firstOrderNumber)}"]`);
+  await expect(recentOrderLink).toBeVisible();
+  await recentOrderLink.click();
+  await expect(page).toHaveURL(new RegExp(`/admin/orders/\\?.*q=${encodeURIComponent(firstOrderNumber)}`));
+  await expect(page.getByRole('heading', { name: /주문 관리/ })).toBeVisible();
+  await page.goto('/admin/');
+
+  await page.getByRole('link', { name: /반품 처리 대기/ }).click();
+  await expect(page).toHaveURL(/\/admin\/returns\/\?.*status=requested/);
+  await expect(page.getByRole('heading', { name: /반품·환불/ })).toBeVisible();
+
   await page.getByRole('link', { name: '상품 관리' }).click();
   await expect(page).toHaveURL(/\/admin\/products\/manage\/?/);
   await expect(page.getByRole('heading', { name: /상품 관리/ })).toBeVisible();
