@@ -163,6 +163,8 @@ npm run test:integration
 npm run test:storefront
 npm run test:browser-e2e
 npm run test:accessibility
+npm run test:lighthouse
+npm run lighthouse:report
 npm run test:resilience
 
 # 배포 산출물
@@ -172,7 +174,7 @@ npm run build:mobile
 npm run mobile:sync
 ```
 
-GitHub Actions는 정적 검증, 계약 테스트, Docker 통합, 보안, E2E, resilience, Kubernetes manifest 검증, Android debug APK 빌드를 순서대로 확인합니다.
+GitHub Actions는 정적 검증, 계약 테스트, Docker 통합, 보안, E2E, Lighthouse 성능·SEO 예산, resilience, Kubernetes manifest 검증, Android debug APK 빌드를 순서대로 확인합니다.
 
 ## 문서
 

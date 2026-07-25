@@ -20,16 +20,17 @@ import StoreShell, { useStore } from './store-shell';
 import ProductCard from './product-card';
 import { api, money, optionText } from '@techzone/api-client/store';
 import { readSession } from '@techzone/api-client/session';
+import { storeImageUrl } from '@/lib/store-image';
 
-export default function ProductDetailView({ slug = null, id = null }) {
-  return <StoreShell><ProductDetail slug={slug} id={id} /></StoreShell>;
+export default function ProductDetailView({ slug = null, id = null, initialProduct = null }) {
+  return <StoreShell><ProductDetail slug={slug} id={id} initialProduct={initialProduct} /></StoreShell>;
 }
 
-function ProductDetail({ slug = null, id = null }) {
-  const [product, setProduct] = useState<any>(null);
+function ProductDetail({ slug = null, id = null, initialProduct = null }) {
+  const [product, setProduct] = useState<any>(initialProduct);
   const [error, setError] = useState('');
-  const [variantId, setVariantId] = useState('');
-  const [image, setImage] = useState('');
+  const [variantId, setVariantId] = useState(initialProduct?.variants?.[0]?.id || '');
+  const [image, setImage] = useState(initialProduct?.images?.[0]?.url || initialProduct?.image || '');
   const [quantity, setQuantity] = useState(1);
   const [tab, setTab] = useState('detail');
   const [wish, setWish] = useState(false);
@@ -37,17 +38,22 @@ function ProductDetail({ slug = null, id = null }) {
   const { add } = useStore();
 
   useEffect(() => {
-    api(slug ? `/products/by-slug/${slug}` : `/products/${id}`)
-      .then(data => {
-        setProduct(data);
+    function initialize(data) {
+        if (!initialProduct) setProduct(data);
         setVariantId(data.variants?.[0]?.id || '');
         setImage(data.images?.[0]?.url || data.image);
         const recent = JSON.parse(localStorage.getItem('techzone-recent') || '[]').filter(value => value.id !== data.id);
         localStorage.setItem('techzone-recent', JSON.stringify([{ id: data.id, slug: data.slug, name: data.name, image: data.image, price: data.price }, ...recent].slice(0, 8)));
         setWish(JSON.parse(localStorage.getItem('techzone-wishlist') || '[]').includes(data.id));
-      })
+    }
+    if (initialProduct) {
+      initialize(initialProduct);
+      return;
+    }
+    api(slug ? `/products/by-slug/${slug}` : `/products/${id}`)
+      .then(initialize)
       .catch(() => setError('상품 정보를 불러오지 못했습니다.'));
-  }, [slug, id]);
+  }, [slug, id, initialProduct]);
 
   const variant = useMemo(() => product?.variants?.find(item => item.id === variantId), [product, variantId]);
 
@@ -123,7 +129,7 @@ function ProductDetail({ slug = null, id = null }) {
 
   return (
     <main className="mx-auto max-w-[1440px] px-4 py-8 pb-40 md:px-8 md:pb-8">
-      <div className="flex items-center gap-2 text-xs text-slate-400">
+      <div className="flex items-center gap-2 text-xs text-slate-600">
         홈 <ChevronRight size={12} /> {product.category} <ChevronRight size={12} /> {product.name}
       </div>
 
@@ -186,12 +192,12 @@ function ProductGallery({ product, image, setImage }) {
   return (
     <div>
       <div className="overflow-hidden rounded-3xl bg-slate-100">
-        <img src={image} alt={product.name} className="aspect-square w-full object-cover" />
+        <img src={storeImageUrl(image,900,80)} alt={product.name} width="900" height="900" fetchPriority="high" className="aspect-square w-full object-cover" />
       </div>
       <div className="mt-3 grid grid-cols-5 gap-2">
         {(product.images || []).map(item => (
           <button key={item.id} onClick={() => setImage(item.url)} className={`overflow-hidden rounded-xl border-2 ${image === item.url ? 'border-cyan-500' : 'border-transparent'}`}>
-            <img src={item.url} alt={item.alt || product.name} className="aspect-square object-cover" />
+            <img src={storeImageUrl(item.url,160,72)} alt={item.alt || product.name} width="96" height="96" loading="lazy" className="aspect-square object-cover" />
           </button>
         ))}
       </div>
@@ -206,7 +212,7 @@ function TrustSummary({ product, setTab }) {
       <b>{product.reviewSummary.average || 0}</b>
       <button onClick={() => setTab('reviews')} className="text-slate-500 underline-offset-4 hover:underline">구매 리뷰 {product.reviewSummary.count}개</button>
       <span className="text-slate-300">·</span>
-      <span className="font-bold text-emerald-600">빠른 배송 가능</span>
+      <span className="font-bold text-emerald-700">빠른 배송 가능</span>
       <span className="text-slate-300">·</span>
       <span className="font-bold text-cyan-700">정품 보증</span>
     </div>
@@ -216,7 +222,7 @@ function TrustSummary({ product, setTab }) {
 function PriceBox({ listPrice, price, discount, couponDiscount, shipping, finalPrice }) {
   return (
     <div className="mt-7 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <del className="text-sm text-slate-400">{money(listPrice)}</del>
+      <del className="text-sm text-slate-600">{money(listPrice)}</del>
       <div className="mt-1 flex items-baseline gap-3">
         {discount > 0 && <b className="text-2xl text-rose-500">{discount}%</b>}
         <strong className="text-3xl">{money(price)}</strong>
@@ -226,7 +232,7 @@ function PriceBox({ listPrice, price, discount, couponDiscount, shipping, finalP
         <p className="flex items-center justify-between text-slate-500"><span>배송비</span><b>{shipping ? money(shipping) : '무료'}</b></p>
         <p className="flex items-center justify-between border-t border-cyan-100 pt-3 text-base font-black"><span>쿠폰 적용 예상가</span><span>{money(finalPrice + shipping)}</span></p>
       </div>
-      <p className="mt-3 text-xs leading-5 text-slate-400">부가세 포함 · 실제 결제 금액은 주문서에서 서버 가격과 쿠폰 정책으로 다시 검증됩니다.</p>
+      <p className="mt-3 text-xs leading-5 text-slate-600">부가세 포함 · 실제 결제 금액은 주문서에서 서버 가격과 쿠폰 정책으로 다시 검증됩니다.</p>
     </div>
   );
 }
@@ -238,7 +244,7 @@ function VariantPicker({ product, variantId, setVariantId }) {
       <div className="mt-3 grid gap-2">
         {(product.variants || []).map(item => (
           <button key={item.id} onClick={() => setVariantId(item.id)} className={`flex items-center justify-between rounded-xl border p-4 text-left ${variantId === item.id ? 'border-cyan-500 bg-cyan-50 ring-1 ring-cyan-500' : 'border-slate-200'}`}>
-            <span><b className="text-sm">{optionText(item.optionValues)}</b><small className="mt-1 block text-slate-400">{item.sku}</small></span>
+            <span><b className="text-sm">{optionText(item.optionValues)}</b><small className="mt-1 block text-slate-600">{item.sku}</small></span>
             <strong>{money(item.salePrice)}</strong>
           </button>
         ))}
@@ -250,8 +256,8 @@ function VariantPicker({ product, variantId, setVariantId }) {
 function TrustCards() {
   return (
     <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-5 text-sm md:grid-cols-2">
-      <p className="flex gap-3"><Truck className="text-cyan-600" size={19} /><span><b>내일 출고 예정</b><small className="block text-slate-400">평일 오후 2시 이전 결제 기준</small></span></p>
-      <p className="flex gap-3"><ShieldCheck className="text-cyan-600" size={19} /><span><b>정품 보증 · 안전 포장</b><small className="block text-slate-400">TECHZONE 공식 유통 상품</small></span></p>
+      <p className="flex gap-3"><Truck className="text-cyan-600" size={19} /><span><b>내일 출고 예정</b><small className="block text-slate-600">평일 오후 2시 이전 결제 기준</small></span></p>
+      <p className="flex gap-3"><ShieldCheck className="text-cyan-600" size={19} /><span><b>정품 보증 · 안전 포장</b><small className="block text-slate-600">TECHZONE 공식 유통 상품</small></span></p>
     </div>
   );
 }

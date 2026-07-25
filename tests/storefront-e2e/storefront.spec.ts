@@ -26,3 +26,26 @@ test('@a11y 고객 홈과 상품 목록이 WCAG 2.1 AA를 충족한다', async (
   await expect(page.locator('a[href^="/products/"]').first()).toBeVisible();
   await expectNoAccessibilityViolations(page, '상품 목록');
 });
+
+test('상품 상세가 검색 엔진용 메타데이터와 Product 구조화 데이터를 제공한다', async ({ page }) => {
+  await page.goto('/products/techzone-oled-monitor-32/');
+
+  await expect(page).toHaveTitle('TECHZONE OLED 게이밍 모니터 32 | TECHZONE');
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', /TECHZONE 공식 제품/);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/products\/techzone-oled-monitor-32\/$/);
+
+  const structuredData = JSON.parse(
+    (await page.locator('script[type="application/ld+json"]').textContent()) || '{}',
+  );
+  expect(structuredData).toMatchObject({
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: 'TECHZONE OLED 게이밍 모니터 32',
+    sku: 'TZ-MN-OLED32',
+    offers: {
+      '@type': 'Offer',
+      priceCurrency: 'KRW',
+      availability: 'https://schema.org/InStock',
+    },
+  });
+});

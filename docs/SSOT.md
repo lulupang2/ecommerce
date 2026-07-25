@@ -258,3 +258,12 @@
   - MinIO Console: `19001`
 
 저장소에 포함된 계정, secret, provider 설정은 로컬 데모 전용입니다. 운영 배포에서는 Secret Manager나 Kubernetes Secret으로 교체해야 합니다.
+
+## 13. 스토어 품질 게이트
+
+- Lighthouse 예산의 SSOT는 `tools/quality/lighthouse.config.mjs`입니다.
+- 고객 홈, 상품 목록, 대표 상품 상세를 모바일 환경에서 각각 3회 측정하고 중앙값을 사용합니다.
+- Performance 0.90, Accessibility 0.98, Best Practices 0.95, SEO 0.98 이상이어야 합니다.
+- FCP 1.8초, LCP 3초, CLS 0.1, TBT 300ms, 총 전송량 1MB를 초과하면 CI를 실패 처리합니다.
+- HTML 리포트와 원본 JSON은 CI의 `lighthouse-reports` artifact로 보존합니다.
+- Capacitor 정적 빌드는 동일 화면 컴포넌트를 사용하되 서버 선로딩 없이 앱 런타임 API로 데이터를 가져옵니다.
