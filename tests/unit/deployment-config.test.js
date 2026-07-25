@@ -47,3 +47,19 @@ test('compose provisions public media storage before the media service starts', 
   assert.deepEqual(initializer.depends_on.minio, { condition: 'service_healthy' });
   assert.deepEqual(media.depends_on['minio-init'], { condition: 'service_completed_successfully' });
 });
+
+test('demo deployment workflow uses protected immutable releases', () => {
+  const workflowSource = fs.readFileSync(path.resolve('.github/workflows/deploy-demo.yml'), 'utf8');
+  const releaseScript = fs.readFileSync(path.resolve('tools/deployment/remote-release.sh'), 'utf8');
+
+  assert.match(workflowSource, /environment:\s*\n\s+name: demo/);
+  assert.match(workflowSource, /Require a successful CI run for this commit/);
+  assert.match(workflowSource, /DEMO_SSH_KNOWN_HOSTS/);
+  assert.doesNotMatch(workflowSource, /ssh-keyscan/);
+  assert.match(workflowSource, /git archive --format=tar\.gz/);
+  assert.match(releaseScript, /pg_dumpall -U canvas/);
+  assert.match(releaseScript, /if ! activate "\$release_dir"/);
+  assert.match(releaseScript, /activate "\$current_release"/);
+  assert.match(releaseScript, /set_release_link previous/);
+  assert.match(releaseScript, /set_release_link current/);
+});

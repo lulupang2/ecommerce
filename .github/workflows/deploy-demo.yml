@@ -1,0 +1,102 @@
+name: Deploy TECHZONE Demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Deployment action
+        type: choice
+        required: true
+        default: deploy
+        options: [deploy, rollback]
+      observability:
+        description: Run the observability profile
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: techzone-demo-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: demo
+      url: https://${{ vars.DEMO_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require a successful CI run for this commit
+        if: inputs.action == 'deploy'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          count="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=1" \
+            --jq '.total_count')"
+          test "$count" -gt 0
+
+      - name: Validate deployment connection settings
+        env:
+          SSH_HOST: ${{ secrets.DEMO_SSH_HOST }}
+          SSH_USER: ${{ secrets.DEMO_SSH_USER }}
+          SSH_PORT: ${{ vars.DEMO_SSH_PORT || '22' }}
+          DEPLOY_ROOT: ${{ vars.DEMO_DEPLOY_ROOT || '/opt/techzone' }}
+          SSH_PRIVATE_KEY: ${{ secrets.DEMO_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEMO_SSH_KNOWN_HOSTS }}
+        run: |
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$SSH_KNOWN_HOSTS"
+          [[ "$SSH_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$SSH_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]]
+          [[ "$DEPLOY_ROOT" =~ ^/[A-Za-z0-9._/-]+$ ]]
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEMO_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEMO_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 0700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+
+      - name: Upload immutable release
+        if: inputs.action == 'deploy'
+        env:
+          SSH_HOST: ${{ secrets.DEMO_SSH_HOST }}
+          SSH_USER: ${{ secrets.DEMO_SSH_USER }}
+          SSH_PORT: ${{ vars.DEMO_SSH_PORT || '22' }}
+        run: |
+          archive="/tmp/techzone-${GITHUB_SHA}.tar.gz"
+          git archive --format=tar.gz --output="$archive" HEAD
+          scp -P "$SSH_PORT" "$archive" "$SSH_USER@$SSH_HOST:/tmp/techzone-${GITHUB_SHA}.tar.gz"
+
+      - name: Deploy and verify
+        env:
+          SSH_HOST: ${{ secrets.DEMO_SSH_HOST }}
+          SSH_USER: ${{ secrets.DEMO_SSH_USER }}
+          SSH_PORT: ${{ vars.DEMO_SSH_PORT || '22' }}
+          DEPLOY_ROOT: ${{ vars.DEMO_DEPLOY_ROOT || '/opt/techzone' }}
+          DEPLOY_ACTION: ${{ inputs.action }}
+          OBSERVABILITY: ${{ inputs.observability }}
+        run: |
+          ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "bash -s -- '$DEPLOY_ACTION' '$DEPLOY_ROOT' '$GITHUB_SHA' '$OBSERVABILITY'" \
+            < tools/deployment/remote-release.sh
+
+      - name: Publish deployment summary
+        run: |
+          {
+            echo "## TECHZONE demo"
+            echo "- Action: \`${{ inputs.action }}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- URL: https://${{ vars.DEMO_DOMAIN }}"
+          } >> "$GITHUB_STEP_SUMMARY"
