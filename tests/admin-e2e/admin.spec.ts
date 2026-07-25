@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { expectNoAccessibilityViolations } from '../accessibility';
 
 test('관리자가 로그인하여 대시보드와 상품 목록을 운영할 수 있다', async ({ page }) => {
   await page.goto('/admin/login/');
@@ -44,4 +45,20 @@ test('관리자 access token 만료 시 refresh token으로 세션을 복구한�
   await expect(page.getByText('총매출', { exact: true }).first()).toBeVisible();
   const refreshedCookies = await context.cookies();
   expect(refreshedCookies.some(cookie => cookie.name === 'tz_access')).toBe(true);
+});
+
+test('@a11y 관리자 로그인과 대시보드가 WCAG 2.1 AA를 충족한다', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/admin/login/');
+  await expectNoAccessibilityViolations(page, '관리자 로그인');
+
+  await page.getByLabel('이메일').fill(process.env.ADMIN_EMAIL || 'admin@techzone.local');
+  await page.getByLabel('비밀번호').fill(process.env.ADMIN_PASSWORD || 'TechzoneAdmin123!');
+  await page.getByRole('button', { name: '로그인' }).click();
+  await expect(page).toHaveURL(/\/admin\/?$/);
+  await expect(page.getByText('총매출', { exact: true }).first()).toBeVisible();
+  await expectNoAccessibilityViolations(page, '관리자 대시보드');
+
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: '본문 바로가기' })).toBeFocused();
 });
