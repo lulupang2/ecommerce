@@ -7,7 +7,7 @@ import {
 } from '@techzone/auth-platform/nest-guards';
 import { CatalogApplicationService } from '../application/service';
 import {
-  ProductCreateDto, ProductUpdateDto, QuestionCreateDto, ReviewCreateDto,
+  ProductCreateDto, ProductListQueryDto, ProductUpdateDto, QuestionCreateDto, ReviewCreateDto,
   ReviewStatusDto, SectionCreateDto, SectionUpdateDto,
 } from './catalog.dtos';
 
@@ -19,7 +19,7 @@ export class CatalogController {
   home() { return this.application.home(); }
 
   @Get('products')
-  products(@Query() query: Record<string, string | undefined>) {
+  products(@Query() query: ProductListQueryDto) {
     return this.application.products(query);
   }
 

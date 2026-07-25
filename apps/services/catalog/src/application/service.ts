@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
 import { CatalogRepository } from '../infrastructure/persistence/repository';
 import { RichTextProvider } from '../infrastructure/providers/rich-text.provider';
+import { ProductListQuery } from '../domain/product-list-query';
 
 @Injectable()
 export class CatalogApplicationService implements OnModuleInit {
@@ -48,7 +49,7 @@ export class CatalogApplicationService implements OnModuleInit {
     };
   }
 
-  async products(query: Record<string, string | undefined>): Promise<any> {
+  async products(query: ProductListQuery): Promise<any> {
     const result = await this.repository.products(query);
     return {
       items: result.rows.map((row: any) => this.responseProduct(row)),
