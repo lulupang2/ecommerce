@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import crypto from 'node:crypto';
 import {
   CreateBucketCommand,
   PutBucketCorsCommand,
@@ -7,6 +8,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { BuildHandler, BuildHandlerArguments } from '@smithy/types';
 
 @Injectable()
 export class StorageProvider {
@@ -32,6 +34,35 @@ export class StorageProvider {
     });
   }
 
+  private withS3CompatibleChecksum<T extends PutBucketCorsCommand | PutBucketPolicyCommand>(command: T): T {
+    command.middlewareStack.addRelativeTo(
+      (next: BuildHandler<any, any>) => async (args: BuildHandlerArguments<any>) => {
+        const request = args.request as {
+          body?: string | Uint8Array;
+          headers: Record<string, string>;
+        };
+        for (const header of Object.keys(request.headers)) {
+          if (header === 'x-amz-sdk-checksum-algorithm' || header.startsWith('x-amz-checksum-')) {
+            delete request.headers[header];
+          }
+        }
+        if (request.body !== undefined) {
+          request.headers['content-md5'] = crypto
+            .createHash('md5')
+            .update(typeof request.body === 'string' ? request.body : Buffer.from(request.body))
+            .digest('base64');
+        }
+        return next(args);
+      },
+      {
+        relation: 'after',
+        toMiddleware: 'flexibleChecksumsMiddleware',
+        name: 's3CompatibleContentMd5',
+      },
+    );
+    return command;
+  }
+
   async initialize(): Promise<void> {
     if (!this.client) return;
     try {
@@ -40,7 +71,7 @@ export class StorageProvider {
       const name = error instanceof Error ? error.name : '';
       if (!['BucketAlreadyOwnedByYou', 'BucketAlreadyExists'].includes(name)) throw error;
     }
-    await this.client.send(new PutBucketPolicyCommand({
+    await this.client.send(this.withS3CompatibleChecksum(new PutBucketPolicyCommand({
       Bucket: this.bucket,
       Policy: JSON.stringify({
         Version: '2012-10-17',
@@ -52,8 +83,8 @@ export class StorageProvider {
           Resource: [`arn:aws:s3:::${this.bucket}/*`],
         }],
       }),
-    }));
-    await this.client.send(new PutBucketCorsCommand({
+    })));
+    await this.client.send(this.withS3CompatibleChecksum(new PutBucketCorsCommand({
       Bucket: this.bucket,
       CORSConfiguration: {
         CORSRules: [{
@@ -67,7 +98,7 @@ export class StorageProvider {
           MaxAgeSeconds: 3600,
         }],
       },
-    }));
+    })));
   }
 
   async uploadTarget(objectKey: string, contentType: string): Promise<{
