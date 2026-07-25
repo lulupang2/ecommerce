@@ -1,0 +1,29 @@
+{
+  "name": "@techzone/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/generated/client.ts",
+    "./types": "./src/generated/api-types.ts",
+    "./session": "./src/session.ts",
+    "./store": "./src/store.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "generate": "node ../../tools/codegen/api-client.mjs",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@aparajita/capacitor-secure-storage": "^8.0.0"
+  },
+  "devDependencies": {
+    "@techzone/eslint-config": "*",
+    "@techzone/tsconfig": "*",
+    "@types/node": "^22.19.0",
+    "eslint": "^9.39.2",
+    "typescript": "^5.9.3"
+  }
+}

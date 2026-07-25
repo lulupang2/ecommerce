@@ -1,0 +1,2 @@
+-- Adoptable baseline for the existing cart database.
+CREATE TABLE IF NOT EXISTS cart_items(user_id UUID NOT NULL,product_id UUID NOT NULL,variant_id UUID NOT NULL,sku TEXT,name TEXT NOT NULL,brand TEXT NOT NULL,option_values JSONB NOT NULL DEFAULT '{}',image TEXT,unit_price INTEGER NOT NULL CHECK(unit_price>=0),quantity INTEGER NOT NULL CHECK(quantity>0),updated_at TIMESTAMPTZ DEFAULT now(),PRIMARY KEY(user_id,variant_id));

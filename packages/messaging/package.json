@@ -1,0 +1,23 @@
+{
+  "name": "@techzone/messaging",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "exports": {
+    "./bus": "./src/bus.cjs",
+    "./idempotency": {
+      "types": "./src/idempotency.d.ts",
+      "default": "./src/idempotency.cjs"
+    }
+  },
+  "scripts": {
+    "build": "node --check src/bus.cjs",
+    "typecheck": "node --check src/bus.cjs",
+    "lint": "node --check src/bus.cjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@techzone/observability": "*",
+    "amqplib": "^0.10.5"
+  }
+}

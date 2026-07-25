@@ -1,0 +1,19 @@
+{
+  "namespace": "techzone",
+  "image": "ghcr.io/example/techzone-backend:latest",
+  "services": [
+    { "name": "gateway", "port": 8080, "replicas": 2, "hpa": true },
+    { "name": "auth", "port": 3001, "replicas": 2 },
+    { "name": "catalog", "port": 3002, "replicas": 2 },
+    { "name": "cart", "port": 3003, "replicas": 2 },
+    { "name": "order", "port": 3004, "replicas": 2, "hpa": true },
+    { "name": "payment", "port": 3005, "replicas": 2, "hpa": true },
+    { "name": "inventory", "port": 3006, "replicas": 2, "hpa": true },
+    { "name": "notification", "port": 3007, "replicas": 2 },
+    { "name": "search", "port": 3008, "replicas": 2 },
+    { "name": "media", "port": 3009, "replicas": 2 },
+    { "name": "fulfillment", "port": 3010, "replicas": 2, "hpa": true },
+    { "name": "procurement", "port": 3011, "replicas": 2 },
+    { "name": "admin", "port": 3012, "replicas": 2 }
+  ]
+}

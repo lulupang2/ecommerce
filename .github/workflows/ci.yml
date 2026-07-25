@@ -1,0 +1,69 @@
+name: TECHZONE CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-and-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run generate:api
+      - run: git diff --exit-code -- packages/api-client/src/generated
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run test:contract
+      - run: npm run build
+      - run: npm run build:mobile
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: static-and-contract
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: docker compose up -d --build
+      - run: npm run test:security
+      - run: npm run test:integration
+      - run: npm run test:storefront
+      - run: npm run test:browser-e2e
+      - run: npm run test:resilience
+      - if: always()
+        run: docker compose logs --no-color > docker-compose.log
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: docker-compose-logs, path: docker-compose.log }
+      - if: always()
+        run: docker compose down -v
+
+  deploy-contracts:
+    runs-on: ubuntu-latest
+    needs: static-and-contract
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm run --silent k8s:render > /tmp/techzone-k8s.json
+      - run: npm run --silent k8s:validate -- /tmp/techzone-k8s.json
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - run: npm ci
+      - run: npm run build:mobile
+      - run: npm run mobile:sync
+      - working-directory: apps/mobile/android
+        run: ./gradlew assembleDebug

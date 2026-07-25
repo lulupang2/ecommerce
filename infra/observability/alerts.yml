@@ -1,0 +1,28 @@
+groups:
+  - name: techzone-reliability
+    rules:
+      - alert: HighErrorRate
+        expr: sum(rate(techzone_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(techzone_http_requests_total[5m])), 1) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "서비스 오류율이 5%를 초과했습니다." }
+      - alert: SlowP95
+        expr: histogram_quantile(0.95, sum by (le,service) (rate(techzone_http_request_duration_seconds_bucket[5m]))) > 1
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "HTTP p95 응답시간이 1초를 초과했습니다." }
+      - alert: DeadLetterDetected
+        expr: techzone_dead_letters > 0
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: "DLQ 메시지가 발생했습니다." }
+      - alert: OutboxBacklog
+        expr: techzone_outbox_pending > 0
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "outbox 발행이 5분 이상 지연되고 있습니다." }
+      - alert: ServiceDown
+        expr: up{job="techzone-services"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "서비스 readiness 확인이 필요합니다." }

@@ -1,84 +1,94 @@
 # TECHZONE 아키텍처
 
-## 시스템 구성
+## 구성
 
 ```mermaid
 flowchart LR
-  U[웹·Android 사용자] --> W[Next.js / Capacitor]
-  W --> G[API Gateway]
-  G --> A[Auth]
-  G --> C[Catalog]
-  G --> CA[Cart]
-  G --> O[Order]
-  G --> P[Payment]
-  G --> I[Inventory]
-  G --> S[Search]
-  G --> N[Notification]
-  G --> M[Media]
-  A --> ADB[(Auth DB)]
-  C --> CDB[(Catalog DB)]
-  CA --> CADB[(Cart DB)]
-  O --> ODB[(Order DB)]
-  P --> PDB[(Payment DB)]
-  I --> IDB[(Inventory DB)]
-  S --> SDB[(Search DB)]
-  N --> NDB[(Notification DB)]
-  M --> MDB[(Media DB)]
-  O <--> R{{RabbitMQ}}
-  P <--> R
-  I <--> R
-  N <--> R
-  C <--> R
-  S <--> R
+  Client["Next.js 웹 / Capacitor 앱"] --> Gateway["API Gateway :8080"]
+  AdminUI["한국어 관리자 CMS"] --> Gateway
+  Gateway --> Auth
+  Gateway --> Catalog
+  Gateway --> Cart
+  Gateway --> Order
+  Gateway --> Payment
+  Gateway --> Inventory
+  Gateway --> Fulfillment
+  Gateway --> Procurement
+  Gateway --> Admin["Admin Query"]
+  Gateway --> Support["Search / Media / Notification"]
+  Bus{{RabbitMQ}} <--> Catalog
+  Bus <--> Order
+  Bus <--> Payment
+  Bus <--> Inventory
+  Bus <--> Fulfillment
+  Bus <--> Procurement
+  Bus <--> Admin
+  Auth --> AuthDB[(Auth DB)]
+  Catalog --> CatalogDB[(Catalog DB)]
+  Order --> OrderDB[(Order DB)]
+  Payment --> PaymentDB[(Payment DB)]
+  Inventory --> InventoryDB[(Inventory DB)]
+  Fulfillment --> FulfillmentDB[(Fulfillment DB)]
+  Procurement --> ProcurementDB[(Procurement DB)]
+  Admin --> AdminDB[(Projection DB)]
 ```
 
-## 저장소 전략
+모노레포는 계약·UI·인프라 변경을 한 커밋으로 추적하기 위한 저장소 전략이다. 런타임과 DB 소유권은 서비스별로 분리되어 MSA 경계를 유지한다.
 
-TECHZONE은 모노레포다. 개인 포트폴리오에서 프론트엔드, 계약, 인프라 변경을 한 커밋으로 추적하고 로컬 환경을 한 번에 재현하기 위해서다. 런타임은 서비스별 프로세스·데이터베이스·컨테이너로 분리하므로 MSA 경계는 유지된다. 규모가 커지면 독립 배포 빈도와 팀 소유권을 기준으로 저장소 분리를 검토한다.
-
-## 주문 Saga
+## 주문·출고·반품 흐름
 
 ```mermaid
 sequenceDiagram
-  participant Client
-  participant Order
-  participant Bus as RabbitMQ
-  participant Payment
-  participant Inventory
-  participant Notification
-  Client->>Order: POST /orders
-  Order->>Bus: order.created
-  Bus->>Payment: order.created
-  Payment->>Bus: payment.approved
-  Bus->>Order: payment.approved
-  Order->>Bus: inventory.reserve
-  Bus->>Inventory: inventory.reserve
-  alt 재고 있음
-    Inventory->>Bus: inventory.reserved
-    Bus->>Order: inventory.reserved
-    Order->>Bus: order.confirmed
-    Bus->>Notification: order.confirmed
-  else 재고 부족
-    Inventory->>Bus: inventory.failed
-    Bus->>Order: inventory.failed
-    Order->>Bus: order.cancelled
-    Bus->>Notification: order.cancelled
-  end
+  participant C as Client
+  participant O as Order
+  participant P as Payment
+  participant I as Inventory
+  participant F as Fulfillment
+  participant A as Admin Query
+  C->>O: 주문 생성
+  O-->>P: order.created
+  P-->>O: payment.approved
+  O-->>I: inventory.reserve
+  I-->>O: inventory.reserved
+  O-->>F: order.confirmed
+  F-->>O: shipment.created
+  F-->>O: shipment.shipped / delivered
+  F-->>P: 반품 검수 후 환불 요청
+  P-->>O: payment.refunded
+  O-->>A: 모든 도메인 이벤트 projection
+  P-->>A: 결제 이벤트
+  I-->>A: 재고 이벤트
+  F-->>A: 배송·반품 이벤트
 ```
 
-## 현재 구현과 확장 지점
+## Admin Query
 
-- Gateway는 단순 프록시다. 공개 배포 전 JWT 검증, rate limiting, correlation ID를 추가한다.
-- Payment는 자동 Mock 승인이다. 실제 연동 시 승인 API·웹훅 검증·멱등 키를 추가한다.
-- Search는 Catalog 검색을 중계한다. 데이터 규모가 커지면 OpenSearch projection으로 교체한다.
-- Media는 업로드 URL 메타데이터만 저장한다. S3/MinIO signed URL로 교체한다.
-- 이벤트 전달은 RabbitMQ topic exchange를 사용한다. 운영 단계에서는 outbox와 consumer inbox를 추가한다.
-- DB 접근은 Drizzle ORM의 서비스별 schema/query를 사용한다. 현재 모든 서비스의 애플리케이션 CRUD가 Drizzle로 전환되어 있다.
-- 로그·메트릭·트레이싱은 OpenTelemetry를 공통 HTTP 계층에 도입한다.
+- 쓰기 모델의 DB를 조인하지 않고 이벤트로 주문·상품·재고·배송·반품·발주 projection을 갱신한다.
+- `processed_events.event_id`로 중복 이벤트를 무시한다.
+- `POST /admin/rebuild`는 내부 API를 읽어 projection을 완전히 재생성한다.
+- KPI와 목록 조회는 projection DB에서 처리하므로 운영 화면이 원본 서비스의 가용성과 복잡한 fan-out에 직접 의존하지 않는다.
 
-## 실패 처리 원칙
+## 보안과 신뢰성
 
-- 동기 API는 명확한 4xx/5xx와 오류 코드를 반환한다.
-- 이벤트 소비자는 재시도 후 DLQ로 이동할 수 있어야 한다.
-- 주문 상태 전이는 단방향으로 제한하고 이벤트 중복 수신에도 동일한 결과를 보장해야 한다.
-- DB 쓰기와 이벤트 발행의 불일치는 transactional outbox 도입으로 해소한다.
+### Storefront 읽기·구매 흐름
+
+```mermaid
+flowchart LR
+  CMS["Catalog CMS"] --> Web["Next.js 홈·목록·상세"]
+  Web --> Quote["Order quote"]
+  Quote --> Catalog["variant 가격 재검증"]
+  Quote --> Coupon["쿠폰·배송비 계산"]
+  Quote --> Order["주문 생성"]
+  Order --> Payment["Mock payment"]
+  Payment --> Inventory["재고 예약"]
+  Inventory --> Fulfillment["출고·배송·반품"]
+```
+
+- 웹 컨테이너는 standalone Node 서버, Capacitor는 `out/` 정적 앱 셸을 사용한다.
+- 동적 웹 라우트와 query 기반 앱 라우트는 같은 화면 컴포넌트를 공유한다.
+
+- JWT에는 역할과 권한을 포함하며 API마다 역할과 세부 permission을 함께 검사한다.
+- 내부 rebuild API는 `x-internal-key`로 외부 요청과 분리한다.
+- 상태 전이는 허용된 방향만 지원하며 재고·환불은 DB 제약과 조건부 갱신으로 불변식을 지킨다.
+- 관리자 mutation과 projection rebuild는 감사로그에 행위자·대상·사유를 기록한다.
+- 다음 운영 단계의 확장점은 transactional outbox, DLQ/재시도 정책, OpenTelemetry, secret manager다.

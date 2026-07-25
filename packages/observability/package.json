@@ -1,0 +1,27 @@
+{
+  "name": "@techzone/observability",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "exports": {
+    "./context": "./src/context.cjs",
+    "./logger": "./src/logger.cjs",
+    "./metrics": "./src/metrics.cjs",
+    "./otel": "./src/otel.cjs",
+    "./register": "./src/otel-register.cjs"
+  },
+  "scripts": {
+    "build": "node --check src/context.cjs",
+    "typecheck": "node --check src/context.cjs",
+    "lint": "node --check src/context.cjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.79.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
+    "prom-client": "^15.1.3"
+  }
+}

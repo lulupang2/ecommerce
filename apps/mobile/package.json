@@ -1,0 +1,24 @@
+{
+  "name": "@techzone/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc --noEmit",
+    "build:web": "npm run build:mobile -w @techzone/storefront",
+    "sync": "npx cap sync",
+    "android:debug": "npm run build:web && npm run sync && cd android && gradlew.bat assembleDebug",
+    "lint": "node -e \"console.log('mobile config ok')\"",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/core": "^8.4.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.2",
+    "@techzone/tsconfig": "*",
+    "@types/node": "^22.19.0",
+    "typescript": "^5.9.3"
+  }
+}

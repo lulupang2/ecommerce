@@ -1,0 +1,33 @@
+{
+  "name": "@techzone/fulfillment",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "npm run build && node --watch dist/main.js",
+    "start": "node dist/main.js",
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "migrate": "node ../../../tools/migrations/run.mjs --service=fulfillment"
+  },
+  "dependencies": {
+    "@techzone/auth-platform": "*",
+    "@techzone/config": "*",
+    "@techzone/contracts": "*",
+    "@techzone/database": "*",
+    "@techzone/messaging": "*",
+    "@techzone/observability": "*",
+    "@nestjs/common": "^11.1.28",
+    "drizzle-orm": "^0.45.2",
+    "class-validator": "^0.15.1",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@techzone/tsconfig": "*",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22.19.0",
+    "typescript": "^5.9.3"
+  }
+}

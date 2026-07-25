@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: techzone
+  namespace: techzone
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: techzone-config
+  namespace: techzone
+data:
+  TZ: Asia/Seoul
+  CURRENCY: KRW
+  CORS_ORIGIN: https://shop.example.com

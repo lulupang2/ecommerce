@@ -1,6 +1,0 @@
-const { eq } = require('drizzle-orm');
-const { database } = require('../../shared/db'); const { payments } = require('../../shared/schema'); const { server, listen } = require('../../shared/http'); const { publish, subscribe } = require('../../shared/bus');
-const db = database('payments'); const app = server('payment');
-async function init() { await db.wait(); await db.query(`CREATE TABLE IF NOT EXISTS payments (id UUID PRIMARY KEY,order_id UUID UNIQUE NOT NULL,status TEXT NOT NULL,amount INTEGER NOT NULL,provider TEXT NOT NULL,payment_key TEXT,approved_at TIMESTAMPTZ)`); await subscribe('payment', ['order.created'], async event => { const p = event.payload; await db.orm.insert(payments).values({ id: crypto.randomUUID(), orderId: p.orderId, status: 'approved', amount: p.totalAmount, provider: 'mock', paymentKey: `mock_${p.orderId}`, approvedAt: new Date() }); await publish('payment.approved', { ...p }); }); }
-app.get('/payments/:orderId', async (req, res) => { const rows = await db.orm.select().from(payments).where(eq(payments.orderId, req.params.orderId)).limit(1); rows[0] ? res.json(rows[0]) : res.status(404).json({ code: 'NOT_FOUND' }); });
-init().then(() => listen(app, 'payment')).catch(error => { console.error(error); process.exitCode = 1; });
