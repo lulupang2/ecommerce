@@ -1,12 +1,12 @@
 import ProductDetailView from '@/components/store/product-detail-view';
+import { catalogEndpoint } from '@/lib/server-catalog';
 import { cache } from 'react';
 
 const slugs=['nova-book-air-14','orbit-pro-x','sonic-max-anc','arc-mechanical-75','home-mini-beam','pixel-watch-s','dock-one','frame-4k'];
 export function generateStaticParams(){return slugs.map(slug=>({slug}));}
 
 const getProduct = cache(async slug => {
-  const base = process.env.INTERNAL_API_BASE_URL || 'http://gateway:8080/api';
-  const response = await fetch(`${base}/products/by-slug/${slug}`, { cache: 'no-store' });
+  const response = await fetch(catalogEndpoint(`/products/by-slug/${slug}`), { cache: 'no-store' });
   if (!response.ok) throw new Error(`Product request failed with ${response.status}`);
   return response.json();
 });
