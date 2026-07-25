@@ -26,9 +26,13 @@ TECHZONE은 테크·IT 기기 쇼핑몰을 주제로 만든 포트폴리오용 �
 
 아래 이미지는 `npm run demo:screenshots`로 재생성할 수 있습니다. Playwright가 API 응답을 mock해 백엔드 전체를 띄우지 않아도 포트폴리오 핵심 화면을 캡처합니다.
 
-| 고객 상품 상세 | 관리자 스토어 CMS | 관리자 쿠폰 운영 |
+| 고객 홈 | 고객 상품 상세 | 관리자 대시보드 |
 | --- | --- | --- |
-| ![고객 상품 상세](docs/assets/storefront-product-detail.png) | ![관리자 스토어 CMS](docs/assets/admin-storefront-cms.png) | ![관리자 쿠폰 운영](docs/assets/admin-coupon-ops.png) |
+| ![고객 홈](docs/assets/storefront-home.png) | ![고객 상품 상세](docs/assets/storefront-product-detail.png) | ![관리자 대시보드](docs/assets/admin-dashboard.png) |
+
+| 관리자 스토어 CMS | 관리자 쿠폰 운영 |
+| --- | --- |
+| ![관리자 스토어 CMS](docs/assets/admin-storefront-cms.png) | ![관리자 쿠폰 운영](docs/assets/admin-coupon-ops.png) |
 
 ## 구현 범위
 
