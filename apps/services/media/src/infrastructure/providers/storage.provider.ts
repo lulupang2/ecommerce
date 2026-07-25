@@ -23,6 +23,8 @@ export class StorageProvider {
       endpoint,
       region: process.env.S3_REGION || 'us-east-1',
       forcePathStyle: true,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
       credentials: {
         accessKeyId: process.env.S3_ACCESS_KEY || 'minioadmin',
         secretAccessKey: process.env.S3_SECRET_KEY || 'minioadmin',
