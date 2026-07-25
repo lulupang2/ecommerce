@@ -20,59 +20,35 @@ const ids = {
   supplier: '50000000-0000-4000-8000-000000000001',
 };
 
-const products = [
-  {
-    id: '21000000-0000-4000-8000-000000000001',
-    variantId: '22000000-0000-4000-8000-000000000001',
-    slug: 'techzone-ultra-14',
-    name: 'TECHZONE 울트라 14 노트북',
-    sku: 'TZ-NB-ULTRA14',
-    model: 'TZU14-2026',
-    price: 1499000,
-    listPrice: 1699000,
-    cost: 1040000,
-    stock: 32,
-    image: 'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=1200&q=85',
-  },
-  {
-    id: '21000000-0000-4000-8000-000000000002',
-    variantId: '22000000-0000-4000-8000-000000000002',
-    slug: 'techzone-oled-monitor-32',
-    name: 'TECHZONE OLED 게이밍 모니터 32',
-    sku: 'TZ-MN-OLED32',
-    model: 'TZO32-240',
-    price: 1099000,
-    listPrice: 1299000,
-    cost: 760000,
-    stock: 18,
-    image: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=1200&q=85',
-  },
-  {
-    id: '21000000-0000-4000-8000-000000000003',
-    variantId: '22000000-0000-4000-8000-000000000003',
-    slug: 'techzone-pro-headset',
-    name: 'TECHZONE 프로 무선 헤드셋',
-    sku: 'TZ-AU-PRO',
-    model: 'TZH-PRO2',
-    price: 249000,
-    listPrice: 299000,
-    cost: 142000,
-    stock: 54,
-    image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=1200&q=85',
-  },
-  {
-    id: '21000000-0000-4000-8000-000000000004',
-    variantId: '22000000-0000-4000-8000-000000000004',
-    slug: 'techzone-mechanical-keyboard',
-    name: 'TECHZONE 커스텀 기계식 키보드',
-    sku: 'TZ-KB-CUSTOM',
-    model: 'TZK-87',
-    price: 189000,
-    listPrice: 219000,
-    cost: 99000,
-    stock: 7,
-    image: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?auto=format&fit=crop&w=1200&q=85',
-  },
+const productFixtures = [
+  ['nova-book-air-14', 'NOVA Book Air 14 노트북', 'NOVA', '노트북', 'laptop', 'NV-BOOK-A14', 'NBA14-2026', 1499000, 1699000, 1040000, 32, 'photo-1496181133206-80ce9b88a853'],
+  ['orbit-pro-x', 'Orbit Pro X 스마트폰', 'ORBIT', '스마트폰', 'smartphone', 'OR-PHONE-PX', 'OPX-512', 1299000, 1399000, 910000, 41, 'photo-1511707171634-5f897ff02aa9'],
+  ['sonic-max-anc', 'Sonic Max ANC 헤드폰', 'SONIC', '오디오', 'audio', 'SN-AUDIO-MAX', 'SMX-ANC', 249000, 299000, 142000, 54, 'photo-1505740420928-5e560c06d30e'],
+  ['arc-mechanical-75', 'ARC Mechanical 75 키보드', 'ARC', '키보드', 'keyboard', 'AR-KB-M75', 'ARC75', 189000, 219000, 99000, 17, 'photo-1587829741301-dc798b83add3'],
+  ['home-mini-beam', 'HOME Mini Beam 프로젝터', 'HOME', '프로젝터', 'projector', 'HM-BEAM-MINI', 'HMB-4K', 699000, 749000, 470000, 13, 'photo-1527443224154-c4a3942d3acf'],
+  ['pixel-watch-s', 'PIXEL Watch S 스마트워치', 'PIXEL', '웨어러블', 'wearable', 'PX-WATCH-S', 'PWS-44', 399000, 449000, 261000, 25, 'photo-1523275335684-37898b6baf30'],
+  ['dock-one', 'DOCK One 썬더볼트 도크', 'DOCK', '액세서리', 'accessory', 'DK-ONE-TB', 'DOCK1-12', 219000, 249000, 128000, 38, 'photo-1625842268584-8f3296236761'],
+  ['frame-4k', 'FRAME 4K 모니터 32', 'FRAME', '모니터', 'monitor', 'FR-MN-4K32', 'FR4K-32', 1099000, 1299000, 760000, 18, 'photo-1527443224154-c4a3942d3acf'],
+];
+
+const products = productFixtures.map((fixture, index) => {
+  const [slug, name, brand, category, categorySlug, sku, model, price, listPrice, cost, stock, photo] = fixture;
+  const suffix = String(index + 1).padStart(12, '0');
+  return {
+    id: `21000000-0000-4000-8000-${suffix}`,
+    variantId: `22100000-0000-4000-8000-${suffix}`,
+    slug, name, brand, category, categorySlug, sku, model, price, listPrice, cost, stock,
+    image: `https://images.unsplash.com/${photo}?auto=format&fit=crop&w=1200&q=85`,
+  };
+});
+
+const storefrontSections = [
+  ['hero', '오늘의 테크, 더 좋은 가격으로', '검증된 IT 기기를 빠르게 만나보세요.', 'main-hero'],
+  ['deal', '오늘의 특가', '지금 가장 좋은 가격의 테크 상품입니다.', 'today-deals'],
+  ['popular', '가장 많이 찾는 상품', 'TECHZONE 고객이 선택한 인기 상품입니다.', 'popular-products'],
+  ['new', '새로 나온 테크', '일상을 바꾸는 새로운 기기를 확인하세요.', 'new-arrivals'],
+  ['brand', '주목할 브랜드', '기술과 디자인을 모두 갖춘 브랜드 컬렉션입니다.', 'brand-spotlight'],
+  ['editorial', 'TECHZONE 에디터 추천', '목적에 맞는 기기를 쉽게 고를 수 있도록 엄선했습니다.', 'editor-picks'],
 ];
 const seededOrderIds = new Map();
 let seededWarehouseId = ids.warehouse;
@@ -126,70 +102,145 @@ await withDatabase('catalog', async client => {
      ON CONFLICT(name) DO UPDATE SET slug=EXCLUDED.slug RETURNING id`,
     [ids.brand],
   );
-  const category = await client.query(
-    `INSERT INTO categories(id,name,slug,display_order)
-     VALUES($1,'테크 기기','tech-devices',0)
-     ON CONFLICT(slug) DO UPDATE SET name=EXCLUDED.name RETURNING id`,
-    [ids.category],
-  );
   for (const [index, product] of products.entries()) {
-    await client.query(
+    const categoryId = `20000000-0000-4000-8000-${String(index + 10).padStart(12, '0')}`;
+    const category = await client.query(
+      `INSERT INTO categories(id,name,slug,display_order)
+       VALUES($1,$2,$3,$4)
+       ON CONFLICT(slug) DO UPDATE SET name=EXCLUDED.name,display_order=EXCLUDED.display_order
+       RETURNING id`,
+      [categoryId, product.category, product.categorySlug, index],
+    );
+    const seededProduct = await client.query(
       `INSERT INTO products(
         id,brand_id,category_id,slug,name,brand,category,price,note,color,image,stock,status
-      ) VALUES($1,$2,$3,$4,$5,'TECHZONE','테크 기기',$6,$7,'블랙',$8,$9,'published')
-      ON CONFLICT(id) DO UPDATE SET price=EXCLUDED.price,stock=EXCLUDED.stock,status='published'`,
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'블랙',$10,$11,'published')
+      ON CONFLICT(slug) DO UPDATE SET
+        category_id=EXCLUDED.category_id,slug=EXCLUDED.slug,name=EXCLUDED.name,
+        brand=EXCLUDED.brand,category=EXCLUDED.category,price=EXCLUDED.price,
+        note=EXCLUDED.note,image=EXCLUDED.image,stock=EXCLUDED.stock,status='published'
+      RETURNING id`,
       [
         product.id,
         brand.rows[0].id,
         category.rows[0].id,
         product.slug,
         product.name,
+        product.brand,
+        product.category,
         product.price,
-        '<p>업무와 엔터테인먼트를 위한 TECHZONE 공식 제품입니다.</p>',
+        `<p>${product.name}의 핵심 기능과 상세 사양을 확인하세요.</p>`,
         product.image,
         product.stock,
       ],
     );
-    await client.query(
+    product.id = seededProduct.rows[0].id;
+    const seededVariant = await client.query(
       `INSERT INTO product_variants(
         id,product_id,sku,model_number,barcode,option_values,list_price,sale_price,cost_price,weight_gram
       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,850)
-      ON CONFLICT(sku) DO UPDATE SET sale_price=EXCLUDED.sale_price,cost_price=EXCLUDED.cost_price`,
+      ON CONFLICT(sku) DO UPDATE SET
+        product_id=EXCLUDED.product_id,model_number=EXCLUDED.model_number,
+        option_values=EXCLUDED.option_values,list_price=EXCLUDED.list_price,
+        sale_price=EXCLUDED.sale_price,cost_price=EXCLUDED.cost_price
+      RETURNING id`,
       [
         product.variantId,
         product.id,
         product.sku,
         product.model,
-        `88010000000${index}`,
+        `88910000000${index}`,
         JSON.stringify({ color: '블랙', option: '기본' }),
         product.listPrice,
         product.price,
         product.cost,
       ],
     );
+    product.variantId = seededVariant.rows[0].id;
     await client.query(
       `INSERT INTO product_images(id,product_id,url,alt,display_order,is_primary)
-       VALUES($1,$2,$3,$4,0,true) ON CONFLICT(id) DO NOTHING`,
-      [`23000000-0000-4000-8000-00000000000${index + 1}`, product.id, product.image, product.name],
+       VALUES($1,$2,$3,$4,0,true)
+       ON CONFLICT(id) DO UPDATE SET url=EXCLUDED.url,alt=EXCLUDED.alt`,
+      [`23100000-0000-4000-8000-00000000000${index + 1}`, product.id, product.image, product.name],
+    );
+    await client.query(
+      `INSERT INTO product_images(id,product_id,url,alt,display_order,is_primary)
+       VALUES($1,$2,$3,$4,1,false)
+       ON CONFLICT(id) DO UPDATE SET url=EXCLUDED.url,alt=EXCLUDED.alt`,
+      [
+        `23200000-0000-4000-8000-00000000000${index + 1}`,
+        product.id,
+        product.image.replace('w=1200', 'w=1000'),
+        `${product.name} 상세 이미지`,
+      ],
     );
     await client.query(
       `INSERT INTO product_specs(id,product_id,spec_key,spec_value,display_order)
        VALUES($1,$2,'모델명',$3,0) ON CONFLICT(id) DO NOTHING`,
-      [`24000000-0000-4000-8000-00000000000${index + 1}`, product.id, product.model],
+      [`24100000-0000-4000-8000-00000000000${index + 1}`, product.id, product.model],
+    );
+    for (const [specIndex, [key, value]] of [
+      ['브랜드', product.brand],
+      ['보증기간', '구매일로부터 1년'],
+    ].entries()) {
+      await client.query(
+        `INSERT INTO product_specs(id,product_id,spec_key,spec_value,display_order)
+         VALUES($1,$2,$3,$4,$5)
+         ON CONFLICT(id) DO UPDATE SET spec_value=EXCLUDED.spec_value`,
+        [
+          `24${specIndex + 2}00000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+          product.id,
+          key,
+          value,
+          specIndex + 1,
+        ],
+      );
+    }
+    await client.query(
+      `INSERT INTO product_variants(
+        id,product_id,sku,model_number,barcode,option_values,list_price,sale_price,cost_price,weight_gram
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,850)
+      ON CONFLICT(sku) DO UPDATE SET sale_price=EXCLUDED.sale_price,cost_price=EXCLUDED.cost_price`,
+      [
+        `22200000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+        product.id,
+        `${product.sku}-S`,
+        `${product.model}-S`,
+        `88920000000${index}`,
+        JSON.stringify({ color: '실버', option: '상위 옵션' }),
+        product.listPrice + 100000,
+        product.price + 100000,
+        product.cost + 70000,
+      ],
     );
   }
-  await client.query(
-    `INSERT INTO storefront_sections(id,type,title,subtitle,slug,status,display_order,config)
-     VALUES($1,'hero','오늘의 테크, 더 좋은 가격으로','검증된 IT 기기를 빠르게 만나보세요','main-hero','published',0,$2)
-     ON CONFLICT(slug) DO UPDATE SET status='published',config=EXCLUDED.config`,
-    [ids.section, JSON.stringify({ eyebrow: 'TECHZONE SUPER SALE', cta: '상품 보러가기' })],
-  );
-  for (const [index, product] of products.entries()) {
-    await client.query(
-      `INSERT INTO storefront_section_products(section_id,product_id,display_order)
-       VALUES($1,$2,$3) ON CONFLICT(section_id,product_id) DO UPDATE SET display_order=EXCLUDED.display_order`,
-      [ids.section, product.id, index],
+  for (const [sectionIndex, [type, title, subtitle, slug]] of storefrontSections.entries()) {
+    const sectionId = `20000001-0000-4000-8000-${String(sectionIndex + 1).padStart(12, '0')}`;
+    const seededSection = await client.query(
+      `INSERT INTO storefront_sections(id,type,title,subtitle,slug,status,display_order,config)
+       VALUES($1,$2,$3,$4,$5,'published',$6,$7)
+       ON CONFLICT(slug) DO UPDATE SET
+         type=EXCLUDED.type,title=EXCLUDED.title,subtitle=EXCLUDED.subtitle,
+         status='published',display_order=EXCLUDED.display_order,config=EXCLUDED.config
+       RETURNING id`,
+      [
+        sectionId,
+        type,
+        title,
+        subtitle,
+        slug,
+        sectionIndex,
+        JSON.stringify({ eyebrow: 'TECHZONE CURATION', cta: '상품 보러가기' }),
+      ],
     );
+    for (const [productIndex, product] of products.entries()) {
+      await client.query(
+        `INSERT INTO storefront_section_products(section_id,product_id,display_order)
+         VALUES($1,$2,$3)
+         ON CONFLICT(section_id,product_id) DO UPDATE SET display_order=EXCLUDED.display_order`,
+        [seededSection.rows[0].id, product.id, productIndex],
+      );
+    }
   }
 });
 
@@ -208,8 +259,8 @@ await withDatabase('inventory', async client => {
     [ids.returnWarehouse],
   );
   for (const [index, product] of products.entries()) {
-    const balanceId = `31000000-0000-4000-8000-00000000000${index + 1}`;
-    const alertId = `32000000-0000-4000-8000-00000000000${index + 1}`;
+    const balanceId = `31100000-0000-4000-8000-00000000000${index + 1}`;
+    const alertId = `32100000-0000-4000-8000-00000000000${index + 1}`;
     await client.query(
       `INSERT INTO stock(product_id,available_qty) VALUES($1,$2)
        ON CONFLICT(product_id) DO UPDATE SET available_qty=EXCLUDED.available_qty`,
@@ -315,7 +366,7 @@ await withDatabase('procurement', async client => {
         id,supplier_id,product_id,variant_id,supplier_sku,unit_cost,lead_time_days
       ) VALUES($1,$2,$3,$4,$5,$6,5) ON CONFLICT(supplier_id,variant_id) DO NOTHING`,
       [
-        `51000000-0000-4000-8000-00000000000${index + 1}`, supplier.rows[0].id, product.id,
+        `51100000-0000-4000-8000-00000000000${index + 1}`, supplier.rows[0].id, product.id,
         product.variantId, `SP-${product.sku}`, product.cost,
       ],
     );
