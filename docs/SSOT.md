@@ -165,7 +165,9 @@
 - `POST /fulfillment/returns/guest`
 - `POST /products/:id/reviews`
 - `POST /products/:id/questions`
+- `GET /wishlists/:userId`
 - `POST|DELETE /wishlists/:userId/:productId`
+- 찜 목록 조회·변경은 로그인한 JWT subject와 `:userId`가 일치할 때만 허용합니다.
 
 ### 관리자
 

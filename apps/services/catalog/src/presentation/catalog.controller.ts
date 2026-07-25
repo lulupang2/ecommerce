@@ -50,7 +50,9 @@ export class CatalogController {
   }
 
   @Get('wishlists/:ownerId')
-  async wishlist(@Param('ownerId') ownerId: string) {
+  @UseGuards(AuthGuard)
+  async wishlist(@Param('ownerId') ownerId: string, @Req() request: any) {
+    if (request.user.sub !== ownerId) throw new ForbiddenException({ code: 'FORBIDDEN' });
     return { items: await this.application.wishlist(ownerId) };
   }
 
