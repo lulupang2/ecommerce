@@ -107,6 +107,60 @@ curl --fail https://demo.example.kr/admin/
 
 ## 4. 업데이트
 
+### GitHub Actions 자동 배포
+
+최초 한 번만 서버에 배포 계정과 공유 환경파일을 준비합니다. 배포 계정은 Docker를
+실행할 수 있어야 하며 `/opt/techzone`을 소유해야 합니다.
+
+```bash
+sudo install -d -o "$USER" -g "$USER" \
+  /opt/techzone/shared \
+  /opt/techzone/releases \
+  /opt/techzone/backups
+
+git clone https://github.com/lulupang2/ecommerce.git /tmp/techzone-bootstrap
+cd /tmp/techzone-bootstrap
+npm ci
+npm run demo:env -- demo.example.kr owner@example.kr
+install -m 0600 .env.demo /opt/techzone/shared/.env.demo
+```
+
+GitHub 저장소의 `demo` Environment에 다음 값을 등록합니다.
+
+| 종류 | 이름 | 값 |
+| --- | --- | --- |
+| Secret | `DEMO_SSH_HOST` | 서버 호스트명 또는 IPv4 |
+| Secret | `DEMO_SSH_USER` | Docker 실행 권한이 있는 배포 계정 |
+| Secret | `DEMO_SSH_PRIVATE_KEY` | 배포 전용 Ed25519 개인키 |
+| Secret | `DEMO_SSH_KNOWN_HOSTS` | 사전에 확인한 서버 host key 한 줄 |
+| Variable | `DEMO_DOMAIN` | 공개 데모 도메인 |
+| Variable | `DEMO_SSH_PORT` | SSH 포트, 기본값 `22` |
+| Variable | `DEMO_DEPLOY_ROOT` | 배포 루트, 기본값 `/opt/techzone` |
+
+`DEMO_SSH_KNOWN_HOSTS`는 신뢰할 수 있는 경로에서 서버 fingerprint를 확인한 뒤
+등록합니다. 워크플로 안에서 `ssh-keyscan`으로 즉석 수집하지 않습니다.
+
+Actions의 `Deploy TECHZONE Demo` 워크플로를 열고 `deploy`를 실행합니다. 워크플로는
+해당 `main` commit의 CI 성공 여부를 확인하고, 불변 릴리스 디렉터리에 소스를
+전송한 뒤 다음 순서로 처리합니다.
+
+1. 기존 PostgreSQL 전체 백업
+2. 환경·Compose 사전 검사
+3. 이미지 빌드와 migration·서비스 기동
+4. Gateway·Storefront·Admin·Media HTTPS 스모크 테스트
+5. 성공 시 `current`/`previous` 릴리스 포인터 교체
+6. 실패 시 직전 릴리스를 자동 재기동
+
+GitHub Environment의 required reviewer를 설정하면 실제 반영 전에 수동 승인을
+강제할 수 있습니다. 관측성 스택은 워크플로의 `observability` 옵션으로 선택합니다.
+
+직전 버전으로 되돌릴 때는 같은 워크플로에서 `rollback`을 선택합니다. 롤백
+직전에도 DB 백업을 만들고 스모크 테스트를 통과한 경우에만 릴리스 포인터를
+교체합니다. SQL migration 자체를 역으로 실행하지는 않으므로 비호환 DB 변경은
+`/opt/techzone/backups`의 dump를 이용한 별도 복구가 필요합니다.
+
+### 수동 업데이트
+
 ```bash
 git pull --ff-only
 npm ci

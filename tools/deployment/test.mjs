@@ -34,8 +34,20 @@ if (compose.status !== 0) {
   throw new Error(`Demo Compose configuration is invalid: ${(compose.stderr || compose.stdout).trim()}`);
 }
 
+const shell = spawnSync('bash', [
+  '-n',
+  process.platform === 'win32'
+    ? 'tools/deployment/remote-release.sh'
+    : path.join(root, 'tools', 'deployment', 'remote-release.sh'),
+], { cwd: root, encoding: 'utf8' });
+
+if (shell.error) throw shell.error;
+if (shell.status !== 0) {
+  throw new Error(`Remote release script is invalid: ${(shell.stderr || shell.stdout).trim()}`);
+}
+
 console.log(JSON.stringify({
   status: 'passed',
-  checks: ['generated_secrets', 'rsa_key', 'private_bindings', 'compose_merge'],
+  checks: ['generated_secrets', 'rsa_key', 'private_bindings', 'compose_merge', 'remote_release_shell'],
   secretValuesPrinted: false,
 }));

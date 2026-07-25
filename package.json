@@ -34,6 +34,7 @@
     "demo:screenshots": "node tools/demo/capture-screenshots.mjs",
     "demo:env": "node tools/deployment/create-demo-env.mjs",
     "demo:preflight": "node tools/deployment/preflight.mjs",
+    "demo:smoke": "node tools/deployment/smoke.mjs",
     "demo:up": "docker compose --env-file .env.demo -f docker-compose.yml -f infra/docker/compose.demo.yml up -d --build",
     "demo:up:observability": "docker compose --env-file .env.demo -f docker-compose.yml -f infra/docker/compose.demo.yml --profile observability up -d --build",
     "demo:down": "docker compose --env-file .env.demo -f docker-compose.yml -f infra/docker/compose.demo.yml --profile observability down",
