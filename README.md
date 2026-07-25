@@ -4,12 +4,26 @@
 
 TECHZONE은 테크·IT 기기 쇼핑몰을 주제로 만든 포트폴리오용 상용형 커머스 플랫폼입니다. 고객 스토어, 관리자 OMS/WMS, NestJS 기반 MSA, 이벤트 신뢰성, Docker/Kubernetes 배포 예시까지 한 흐름으로 보여주는 것을 목표로 합니다.
 
+> 처음 보는 경우 [Case Study](docs/CASE_STUDY.md) → [시연 시나리오](docs/DEMO.md) →
+> [아키텍처](docs/ARCHITECTURE.md) 순서로 읽으면 제품과 기술 선택을 빠르게
+> 파악할 수 있습니다.
+
 ## 무엇을 보여주는 프로젝트인가
 
 - 고객은 Next.js SSR 스토어에서 상품 탐색, 상세 비교, 장바구니, 쿠폰, Mock 결제, 주문 조회, 취소·반품 요청을 경험합니다.
 - 운영자는 관리자 CMS에서 대시보드, 주문, 배송, 반품, 상품, 재고, 발주, 회원, 리뷰, 쿠폰, 홈 진열, 권한, 감사 로그를 관리합니다.
 - 백엔드는 서비스별 DB 소유권, Drizzle ORM, RabbitMQ 이벤트, outbox/inbox, 멱등성, DLQ, projection을 통해 MSA 운영 흐름을 시연합니다.
 - 웹과 Capacitor Android 앱은 같은 고객 컴포넌트를 공유하고, 관리자는 별도 Next.js 앱으로 `/admin` 경로를 유지합니다.
+
+## 해결한 핵심 문제
+
+| 문제 | 선택 | 검증 근거 |
+| --- | --- | --- |
+| 옵션별 가격·재고·출고 SKU 불일치 | Product와 Variant를 분리하고 주문·재고의 기준을 Variant로 통일 | 서버 quote, 재고 reservation·movement 통합 테스트 |
+| DB commit과 RabbitMQ publish 사이의 이벤트 유실 | Transactional outbox, publisher confirm, inbox event ID | RabbitMQ 중단·복구 resilience 테스트 |
+| 관리자 대시보드의 서비스 간 fan-out | Admin Query가 이벤트 기반 projection과 KPI 제공 | projection rebuild와 원본 합계 검증 |
+| 웹 SEO와 Android 코드 중복 | Next.js SSR과 Capacitor 정적 export가 고객 화면 공유 | SSR build, static build·sync, Android APK |
+| 공개 배포 실패와 데이터 손상 | 불변 릴리스, 배포 전 DB backup, HTTPS smoke, 자동 직전 버전 복구 | 배포 셸·Compose 계약과 공개 surface 검사 |
 
 ## 핵심 데모 시나리오
 
@@ -109,7 +123,7 @@ infra/
 tests/
   contract, integration, security, storefront-e2e, admin-e2e, resilience
 docs/
-  PRD.md, SSOT.md
+  Case Study, PRD, SSOT, Architecture, ADR, Runbook
 ```
 
 ## 로컬 실행
@@ -161,9 +175,16 @@ GitHub Actions는 정적 검증, 계약 테스트, Docker 통합, 보안, E2E, r
 
 ## 문서
 
+- [Case Study](docs/CASE_STUDY.md): 문제 정의, 선택, 결과와 트레이드오프
 - [PRD](docs/PRD.md): 제품 요구사항과 완료 기준
 - [SSOT](docs/SSOT.md): 상태 ENUM, API, 데이터 불변식, 정책 기준
-- [공개 데모 배포](docs/DEPLOYMENT.md): HTTPS, 비밀값 생성, 사전 점검, 백업·복구
+- [아키텍처](docs/ARCHITECTURE.md): 서비스 책임, Saga, CQRS, 웹·앱 경계
+- [데이터 모델](docs/DATA_MODEL.md): 서비스별 데이터 소유권과 관계
+- [기술 의사결정](docs/DECISIONS.md): 모노레포·MSA·CQRS·Capacitor ADR
+- [신뢰성·보안](docs/RELIABILITY.md): 인증, outbox/inbox, 관측성과 복구
+- [시연 시나리오](docs/DEMO.md): 고객 구매와 관리자 운영 데모 순서
+- [실행·복구 Runbook](docs/RUNBOOK.md): 개발, 장애 진단, migration, APK
+- [공개 데모 배포](docs/DEPLOYMENT.md): HTTPS, CD, 백업·자동 복구
 
 ## 의도적으로 제외한 범위
 
