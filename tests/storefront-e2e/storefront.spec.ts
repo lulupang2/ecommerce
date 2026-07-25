@@ -57,3 +57,24 @@ test('상품 상세가 검색 엔진용 메타데이터와 Product 구조화 데
     /^https:\/\/schema\.org\/(InStock|OutOfStock)$/,
   );
 });
+
+test('상품 상세에서 본 상품을 홈의 최근 본 상품에서 다시 찾을 수 있다', async ({ page }) => {
+  const slug = 'nova-book-air-14';
+  await page.goto('/');
+  await page.evaluate(() => {
+    localStorage.setItem('techzone-recent', 'invalid-json');
+  });
+  await page.goto(`/products/${slug}/`);
+  const productName = (await page.getByRole('heading', { level: 1 }).textContent())?.trim();
+  expect(productName).toBeTruthy();
+
+  await page.goto('/');
+
+  const recentSection = page.getByRole('region', { name: '최근 본 상품' });
+  await expect(recentSection).toBeVisible();
+  await expect(recentSection.getByRole('link', { name: productName, exact: true }).first()).toHaveAttribute(
+    'href',
+    `/products/${slug}/`,
+  );
+  await expect(recentSection.getByRole('button', { name: '장바구니 담기' })).toHaveCount(0);
+});

@@ -4,14 +4,18 @@ import { ArrowRight, BadgePercent, Clock3, Headphones, PackageCheck, ShieldCheck
 import StoreShell, { useStore } from '@/components/store/store-shell';
 import ProductCard from '@/components/store/product-card';
 import { storeImageUrl } from '@/lib/store-image';
+import { readRecentlyViewed } from '@/lib/recent-products';
 import { api, categories, money } from '@techzone/api-client/store';
 
 const benefits: any[] = [[Truck,'8만원 이상 무료배송','빠르고 안전한 배송'],[ShieldCheck,'정품 보증','공식 유통 상품'],[Headphones,'고객 지원','평일 09:00–18:00'],[BadgePercent,'TECHZONE10','최대 5만원 할인']];
 
 export default function HomeView({initialData=null}){return <StoreShell><HomeContent initialData={initialData}/></StoreShell>;}
 function HomeContent({initialData}){
-  const [data,setData]=useState(initialData),[error,setError]=useState('');const {add}=useStore();
-  useEffect(()=>{if(!initialData)api('/storefront/home').then(setData).catch(()=>setError('스토어 정보를 불러오지 못했습니다.'));},[initialData]);
+  const [data,setData]=useState(initialData),[error,setError]=useState(''),[recent,setRecent]=useState<any[]>([]);const {add}=useStore();
+  useEffect(()=>{
+    setRecent(readRecentlyViewed());
+    if(!initialData)api('/storefront/home').then(setData).catch(()=>setError('스토어 정보를 불러오지 못했습니다.'));
+  },[initialData]);
   if(!data)return <main className="mx-auto max-w-[1440px] px-4 py-10 md:px-8">{error?<p className="rounded-xl bg-red-50 p-5 text-red-700">{error}</p>:<div className="h-[520px] animate-pulse rounded-3xl bg-slate-100"/>}</main>;
   const section=type=>data.sections.find(item=>item.type===type);
   const hero=section('hero'),deal=section('deal'),popular=section('popular'),newItems=section('new'),brand=section('brand'),editorial=section('editorial');
@@ -26,6 +30,7 @@ function HomeContent({initialData}){
     {editorial&&<section className="mx-auto max-w-[1440px] px-4 py-10 md:px-8"><div className="grid overflow-hidden rounded-3xl bg-slate-950 text-white md:grid-cols-2"><img src={editorial.products?.[3]?.image||editorial.products?.[0]?.image} className="h-80 w-full object-cover md:h-full" alt=""/><div className="p-10 md:p-16"><p className="text-xs font-black tracking-[.2em] text-indigo-300">TECH EDITORIAL</p><h2 className="mt-5 text-4xl font-black tracking-[-.06em] md:text-6xl">{editorial.title}</h2><p className="mt-6 leading-7 text-slate-300">{editorial.subtitle}</p><a href="/shop/?category=액세서리" className="mt-9 inline-flex border-b pb-2 font-bold">기획전 보기 <ArrowRight className="ml-2"/></a></div></div></section>}
     <ProductSection section={newItems} onAdd={add}/>
     <section className="bg-slate-50"><div className="mx-auto max-w-[1440px] px-4 py-16 md:px-8"><div className="flex items-end justify-between"><div><p className="text-xs font-black tracking-[.2em] text-indigo-600">BRAND ZONE</p><h2 className="mt-3 text-3xl font-black">{brand?.title}</h2></div></div><div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">{data.brands.slice(0,8).map(item=><a href={`/shop/?brand=${item.name}`} key={item.slug} className="grid h-28 place-items-center rounded-2xl border bg-white text-xl font-black tracking-tight hover:border-indigo-400">{item.name}</a>)}</div></div></section>
+    {recent.length>0&&<section aria-labelledby="recent-products-title" className="mx-auto max-w-[1440px] px-4 py-16 md:px-8"><div className="flex items-end justify-between"><div><p className="text-xs font-black tracking-[.2em] text-cyan-700">RECENTLY VIEWED</p><h2 id="recent-products-title" className="mt-3 text-3xl font-black">최근 본 상품</h2><p className="mt-2 text-sm text-slate-500">관심 있게 살펴본 상품을 이어서 비교해 보세요.</p></div><a href="/mypage/#recent-products" className="hidden text-sm font-bold text-slate-500 hover:text-slate-950 md:inline-flex">전체보기 <ArrowRight className="ml-2" size={16}/></a></div><div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">{recent.slice(0,4).map(product=><ProductCard key={product.id} product={product}/>)}</div></section>}
   </main>;
 }
 function HeroMetric({icon:Icon,label,value}){return <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><Icon size={17} className="text-cyan-300"/><p className="mt-3 text-[11px] font-bold text-slate-400">{label}</p><b className="mt-1 block text-sm text-white">{value}</b></div>;}
