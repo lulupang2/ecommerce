@@ -11,9 +11,9 @@ import {
   PackageCheck, RefreshCw, RotateCcw, ShoppingBag, Truck,
 } from 'lucide-react';
 import { Button } from '@techzone/ui/button';
-import { authHeaders, readSession } from '@techzone/api-client/session';
+import { clearSession, readSession } from '@techzone/api-client/session';
+import { api, ApiError } from '@techzone/api-client/store';
 
-const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:18080/api';
 const statusLabels = { pending: '결제 대기', confirmed: '주문 확정', preparing: '상품 준비', shipped: '배송 중', delivered: '배송 완료', cancelled: '취소' };
 const colors = ['#4f46e5', '#0ea5e9', '#14b8a6', '#f59e0b', '#f43f5e', '#64748b'];
 const won = value => `${new Intl.NumberFormat('ko-KR').format(value || 0)}원`;
@@ -25,16 +25,29 @@ export default function AdminDashboard() {
 
   async function load() {
     const session = readSession();
-    if (!session?.user) return setView({ loading: false, error: '관리자 로그인이 필요합니다.', data: null });
+    if (!session?.user) {
+      window.location.replace('/admin/login/');
+      return;
+    }
     setView(current => ({ ...current, loading: true, error: '' }));
     const to = new Date(); const from = new Date(); from.setDate(to.getDate() - (days - 1));
     try {
       const query = new URLSearchParams({ from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) });
-      const response = await fetch(`${API}/admin/dashboard?${query}`, { credentials: 'include', headers: authHeaders() });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.code === 'MISSING_PERMISSION' ? '대시보드 조회 권한이 없습니다.' : '대시보드 데이터를 불러오지 못했습니다.');
+      const data = await api(`/admin/dashboard?${query}`);
       setView({ loading: false, error: '', data });
-    } catch (error) { setView({ loading: false, error: error.message, data: null }); }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearSession();
+        window.location.replace('/admin/login/?expired=1');
+        return;
+      }
+      const code = error instanceof ApiError ? (error.data as any)?.code : '';
+      setView({
+        loading: false,
+        error: code === 'MISSING_PERMISSION' ? '대시보드 조회 권한이 없습니다.' : '대시보드 데이터를 불러오지 못했습니다.',
+        data: null,
+      });
+    }
   }
   useEffect(() => { load(); }, [days]);
 

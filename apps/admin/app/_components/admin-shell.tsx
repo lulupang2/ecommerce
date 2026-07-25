@@ -8,9 +8,9 @@ import {
   Menu, Package, PackageCheck, PanelLeftClose, PanelLeftOpen, RotateCcw, Search, Settings,
   ShoppingCart, Star, Truck, UserRound, Users, Warehouse, X, PanelsTopLeft, TicketPercent,
 } from 'lucide-react';
-import { authHeaders, readSession } from '@techzone/api-client/session';
+import { clearSession, readSession } from '@techzone/api-client/session';
+import { api, ApiError } from '@techzone/api-client/store';
 
-const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:18080/api';
 const groups = [
   { label: '인사이트', items: [
     { href: '/', label: '대시보드', icon: LayoutDashboard, permission: 'dashboard.read' },
@@ -57,11 +57,18 @@ export default function AdminShell({ children }) {
       if (!pathname.startsWith('/login')) window.location.href = '/admin/login/';
       return;
     }
-    const headers = authHeaders();
     Promise.all([
-      fetch(`${API}/admin/alerts`, { credentials: 'include', headers }).then(response => response.ok ? response.json() : { items: [] }),
-      fetch(`${API}/admin/warehouses`, { credentials: 'include', headers }).then(response => response.ok ? response.json() : { items: [] }),
-    ]).then(([alertData, warehouseData]) => { setAlerts(alertData.items || []); setWarehouses(warehouseData.items || []); }).catch(() => {});
+      api('/admin/alerts'),
+      api('/admin/warehouses'),
+    ]).then(([alertData, warehouseData]) => {
+      setAlerts(alertData.items || []);
+      setWarehouses(warehouseData.items || []);
+    }).catch(error => {
+      if (error instanceof ApiError && error.status === 401) {
+        clearSession();
+        window.location.replace('/admin/login/?expired=1');
+      }
+    });
   }, [pathname]);
 
   const visibleGroups = useMemo(() => groups.map(group => ({ ...group, items: group.items.filter(item => isSuper || permissions.includes(item.permission)) })).filter(group => group.items.length), [isSuper, permissions]);

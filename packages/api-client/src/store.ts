@@ -1,5 +1,16 @@
 import { authHeaders, refreshSession } from './session';
 export const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:18080/api';
+let refreshInFlight: ReturnType<typeof refreshSession> | null = null;
+
+async function renewSession() {
+  if (!refreshInFlight) {
+    refreshInFlight = refreshSession(API).finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
 export const money = (value: unknown) => `${new Intl.NumberFormat('ko-KR').format(Number(value || 0))}원`;
 export const categories = [
   { name: '노트북', slug: 'laptop' }, { name: '스마트폰', slug: 'smartphone' },
@@ -23,7 +34,7 @@ export async function api<T = any>(path: string, options: RequestInit = {}): Pro
   const request = () => fetch(`${API}${path}`, { credentials: 'include', ...options, headers: { 'content-type': 'application/json', ...authHeaders({ mutation }), ...(options.headers || {}) } });
   let response = await request();
   if (response.status === 401 && !path.startsWith('/auth/')) {
-    const renewed = await refreshSession(API);
+    const renewed = await renewSession();
     if (renewed) response = await request();
   }
   const text = await response.text(); const data = text ? JSON.parse(text) : null;
