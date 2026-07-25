@@ -48,6 +48,11 @@ test('compose provisions public media storage before the media service starts', 
   assert.deepEqual(media.depends_on['minio-init'], { condition: 'service_completed_successfully' });
 });
 
+test('storefront server rendering reads catalog data without consuming the public gateway limit', () => {
+  const compose = yaml.load(fs.readFileSync(path.resolve('docker-compose.yml'), 'utf8'));
+  assert.equal(compose.services.storefront.environment.CATALOG_URL, 'http://catalog:3002');
+});
+
 test('demo deployment workflow uses protected immutable releases', () => {
   const workflowSource = fs.readFileSync(path.resolve('.github/workflows/deploy-demo.yml'), 'utf8');
   const releaseScript = fs.readFileSync(path.resolve('tools/deployment/remote-release.sh'), 'utf8');

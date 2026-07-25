@@ -12,6 +12,7 @@ out/
 *.log
 playwright-report/
 test-results/
+.lighthouseci/
 apps/mobile/android/.gradle/
 apps/mobile/android/build/
 apps/mobile/android/app/build/

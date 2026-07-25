@@ -213,7 +213,7 @@ services:
       dockerfile: infra/docker/frontend.Dockerfile
       args: { APP_NAME: storefront }
     restart: unless-stopped
-    environment: { PORT: 3000, INTERNAL_API_BASE_URL: http://gateway:8080/api, NEXT_PUBLIC_API_BASE_URL: /api }
+    environment: { PORT: 3000, CATALOG_URL: http://catalog:3002, INTERNAL_API_BASE_URL: http://gateway:8080/api, NEXT_PUBLIC_API_BASE_URL: /api }
     depends_on: { gateway: { condition: service_healthy } }
 
   admin-web:
