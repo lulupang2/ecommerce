@@ -29,6 +29,7 @@ const productFixtures = [
   ['pixel-watch-s', 'PIXEL Watch S 스마트워치', 'PIXEL', '웨어러블', 'wearable', 'PX-WATCH-S', 'PWS-44', 399000, 449000, 261000, 25, 'photo-1523275335684-37898b6baf30'],
   ['dock-one', 'DOCK One 썬더볼트 도크', 'DOCK', '액세서리', 'accessory', 'DK-ONE-TB', 'DOCK1-12', 219000, 249000, 128000, 38, 'photo-1625842268584-8f3296236761'],
   ['frame-4k', 'FRAME 4K 모니터 32', 'FRAME', '모니터', 'monitor', 'FR-MN-4K32', 'FR4K-32', 1099000, 1299000, 760000, 18, 'photo-1527443224154-c4a3942d3acf'],
+  ['power-cable-100w', 'POWER USB-C 100W 케이블', 'POWER', '액세서리', 'accessory', 'PW-CABLE-100W', 'PWC-100', 29000, 29000, 12000, 120, 'photo-1625842268584-8f3296236761'],
 ];
 
 const products = productFixtures.map((fixture, index) => {

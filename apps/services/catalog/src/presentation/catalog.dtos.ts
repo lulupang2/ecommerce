@@ -1,6 +1,26 @@
 import {
-  IsIn, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, Max, MaxLength, Min,
+  IsIn, IsInt, IsNotEmpty, IsNumberString, IsObject, IsOptional, IsString,
+  Matches, Max, MaxLength, Min,
 } from 'class-validator';
+import {
+  PRODUCT_LIST_SORTS,
+  ProductListQuery,
+} from '../domain/product-list-query';
+
+export class ProductListQueryDto implements ProductListQuery {
+  @IsOptional() @IsString() @MaxLength(120) q?: string;
+  @IsOptional() @IsString() @MaxLength(120) search?: string;
+  @IsOptional() @IsString() @MaxLength(80) category?: string;
+  @IsOptional() @IsString() @MaxLength(80) brand?: string;
+  @IsOptional() @IsNumberString({ no_symbols: true }) minPrice?: string;
+  @IsOptional() @IsNumberString({ no_symbols: true }) maxPrice?: string;
+  @IsOptional() @IsIn(['true', 'false']) inStock?: string;
+  @IsOptional() @IsIn(['true', 'false']) discounted?: string;
+  @IsOptional() @IsIn(PRODUCT_LIST_SORTS) sort?: ProductListQuery['sort'];
+  @IsOptional() @Matches(/^[1-9]\d*$/) page?: string;
+  @IsOptional() @Matches(/^(?:[1-9]|[1-3]\d|4[0-8])$/) pageSize?: string;
+  @IsOptional() @IsIn(['all']) status?: string;
+}
 
 export class ReviewCreateDto {
   @IsInt() @Min(1) @Max(5) rating!: number;

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ProductListQuery } from '../../domain/product-list-query';
 
 const crypto = require('node:crypto') as typeof import('node:crypto');
 const { database } = require('@techzone/database/db') as { database(service: string): any };
@@ -60,7 +61,7 @@ export class CatalogRepository {
     return { sections, categories, brands };
   }
 
-  async products(query: Record<string, string | undefined>): Promise<any> {
+  async products(query: ProductListQuery): Promise<any> {
     const params: unknown[] = [];
     const where = [`p.status='published'`];
     if (query.category && query.category.toLowerCase() !== 'all') {
@@ -74,8 +75,9 @@ export class CatalogRepository {
       params.push(query.brand);
       where.push(`lower(p.brand)=lower($${params.length})`);
     }
-    if (query.q) {
-      params.push(query.q, query.q);
+    const search = query.q || query.search;
+    if (search) {
+      params.push(search, search);
       where.push(
         `(p.name ILIKE '%'||$${params.length - 1}||'%'
           OR p.brand ILIKE '%'||$${params.length}||'%')`,
@@ -90,6 +92,7 @@ export class CatalogRepository {
       where.push(`v.sale_price<=$${params.length}`);
     }
     if (query.inStock === 'true') where.push(`p.stock>0`);
+    if (query.discounted === 'true') where.push(`v.list_price>v.sale_price`);
     const sorts: Record<string, string> = {
       price_asc: 'v.sale_price ASC',
       price_desc: 'v.sale_price DESC',

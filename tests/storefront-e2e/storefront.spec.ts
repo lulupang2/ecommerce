@@ -11,6 +11,11 @@ test('고객이 홈에서 상품을 탐색할 수 있다', async ({ page }) => {
   await page.goto('/shop/');
   await expect(page.locator('main')).toBeVisible();
   await expect(page.locator('a[href^="/products/"]').first()).toBeVisible();
+  const mobileFilterButton = page.getByRole('button', { name: '필터', exact: true });
+  if (await mobileFilterButton.isVisible()) await mobileFilterButton.click();
+  await page.getByRole('checkbox', { name: '할인 상품만' }).check();
+  await expect(page).toHaveURL(/discounted=true/);
+  await expect(page.locator('a[href^="/products/"]').first()).toBeVisible();
 });
 
 test('@a11y 고객 홈과 상품 목록이 WCAG 2.1 AA를 충족한다', async ({ page }) => {

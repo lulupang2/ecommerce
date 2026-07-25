@@ -198,6 +198,10 @@
 - `from`
 - `to`
 
+고객 상품 목록은 `category`, `brand`, `minPrice`, `maxPrice`, `inStock`,
+`discounted`, `sort`를 추가로 지원합니다. `discounted=true`는 대표 활성
+variant의 정가가 판매가보다 큰 상품만 반환합니다.
+
 ## 10. 이벤트 기준
 
 모든 이벤트 envelope는 아래 필드를 포함합니다.

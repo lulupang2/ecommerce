@@ -22,6 +22,11 @@ assert.ok(filtered.items.length > 0, '카테고리·재고 필터 결과가 있�
 assert.ok(filtered.items.every(product => product.category === '노트북' && product.stock > 0));
 const searched = await request('/products?q=NOVA&minPrice=100000&maxPrice=3000000');
 assert.ok(searched.items.some(product => product.brand === 'NOVA'), '통합 검색과 가격 필터를 함께 지원해야 합니다.');
+const allProducts = await request('/products?page=1&pageSize=48');
+const discounted = await request('/products?discounted=true&sort=discount&page=1&pageSize=48');
+assert.ok(discounted.items.length > 0, '할인 상품 필터 결과가 있어야 합니다.');
+assert.ok(discounted.items.every(product => product.discountRate > 0), '할인 상품 필터에는 할인율이 있는 상품만 포함되어야 합니다.');
+assert.ok(discounted.total < allProducts.total, '비할인 상품은 할인 상품 필터에서 제외되어야 합니다.');
 
 const product = filtered.items[0];
 const detail = await request(`/products/by-slug/${product.slug}`);
