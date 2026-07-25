@@ -5,6 +5,13 @@ import pg from 'pg';
 
 const { Client } = pg;
 const root = process.cwd();
+const transientConnectionCodes = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  '57P03',
+  '53300',
+]);
 const services = {
   auth: { database: 'auth', workspace: 'auth' },
   catalog: { database: 'catalog', workspace: 'catalog' },
@@ -20,6 +27,34 @@ const services = {
   admin: { database: 'admin', workspace: 'admin-query' },
 };
 
+const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+async function connectWithRetry(connectionString, service, maxAttempts = 12) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const client = new Client({ connectionString });
+    try {
+      await client.connect();
+      return client;
+    } catch (error) {
+      await client.end().catch(() => {});
+      const canRetry = transientConnectionCodes.has(error.code) && attempt < maxAttempts;
+      if (!canRetry) throw error;
+
+      const delayMs = Math.min(500 * (2 ** (attempt - 1)), 5_000);
+      console.warn(JSON.stringify({
+        service,
+        status: 'database_wait',
+        attempt,
+        maxAttempts,
+        delayMs,
+        code: error.code,
+      }));
+      await wait(delayMs);
+    }
+  }
+  throw new Error(`${service} database connection retry exhausted`);
+}
+
 async function migrateService(service, { database, workspace }) {
   const baseline = await fs.readFile(path.join(root, 'apps', 'services', workspace, 'drizzle', '0000_baseline.sql'), 'utf8');
   const reliability = await fs.readFile(path.join(root, 'packages', 'messaging', 'migrations', '0000_reliability.sql'), 'utf8');
@@ -30,8 +65,7 @@ async function migrateService(service, { database, workspace }) {
   const user = encodeURIComponent(process.env.POSTGRES_USER || 'canvas');
   const password = encodeURIComponent(process.env.POSTGRES_PASSWORD || 'canvas');
   const connectionString = `postgres://${user}:${password}@${process.env.POSTGRES_HOST || 'localhost'}:${process.env.POSTGRES_PORT || 5432}/${database}`;
-  const client = new Client({ connectionString });
-  await client.connect();
+  const client = await connectWithRetry(connectionString, service);
   try {
     await client.query(`CREATE TABLE IF NOT EXISTS drizzle_migrations(id TEXT PRIMARY KEY,checksum TEXT NOT NULL,applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
     for (let index = 0; index < statements.length; index += 1) {

@@ -79,6 +79,79 @@ const coupons = [
   { id: 'coupon-3', code: 'WELCOME5', status: 'inactive', value: 5, min_order_amount: 80000, max_discount_amount: 15000, redemption_count: 412 },
 ];
 
+const homeResponse = {
+  sections: [
+    { type: 'hero', title: '프리미엄 테크를 스마트하게', subtitle: '노트북부터 오디오까지 엄선된 IT 기기를 만나보세요.', config: { eyebrow: 'TECHZONE SUPER SALE' }, products: [product] },
+    { type: 'deal', title: '오늘의 특가', subtitle: '한정 수량 할인 상품', products: [product, ...product.related] },
+    { type: 'popular', title: '인기 상품', subtitle: '최근 가장 많이 담긴 상품', products: product.related },
+    { type: 'brand', title: '브랜드관', subtitle: '브랜드별 추천 기기', products: product.related },
+    { type: 'editorial', title: '테크 편집부가 고른 오늘의 기기', subtitle: '실사용 후기와 전환 데이터를 기반으로 선별했습니다.', products: product.related },
+    { type: 'new', title: '신상품', subtitle: '새로 들어온 기기', products: product.related },
+  ],
+  brands: [
+    { slug: 'novatech', name: 'NovaTech' },
+    { slug: 'auralab', name: 'Auralab' },
+    { slug: 'viewmax', name: 'ViewMax' },
+    { slug: 'connectx', name: 'ConnectX' },
+  ],
+};
+
+const dashboardResponse = {
+  kpis: {
+    grossSales: { value: 128400000, change: 18.2 },
+    netSales: { value: 115800000, change: 16.9 },
+    orders: { value: 286, change: 12.4 },
+    averageOrderValue: { value: 449000, change: 7.8 },
+    refundRate: { value: 2.1 },
+    approvalRate: { value: 98.6 },
+    delayedShipments: { value: 4 },
+    inventoryRisk: { value: 7 },
+  },
+  trend: [
+    { label: '7/19', revenue: 16400000, orders: 31 },
+    { label: '7/20', revenue: 18200000, orders: 35 },
+    { label: '7/21', revenue: 21300000, orders: 42 },
+    { label: '7/22', revenue: 20400000, orders: 39 },
+    { label: '7/23', revenue: 23100000, orders: 45 },
+    { label: '7/24', revenue: 25000000, orders: 48 },
+    { label: '7/25', revenue: 26800000, orders: 46 },
+  ],
+  funnel: [
+    { status: 'pending', value: 18 },
+    { status: 'confirmed', value: 54 },
+    { status: 'preparing', value: 41 },
+    { status: 'shipped', value: 36 },
+    { status: 'delivered', value: 287 },
+  ],
+  categorySales: [
+    { name: '노트북', value: 58 },
+    { name: '스마트폰', value: 24 },
+    { name: '오디오', value: 12 },
+    { name: '액세서리', value: 6 },
+  ],
+  brandSales: [
+    { name: 'NovaTech', value: 44 },
+    { name: 'Auralab', value: 21 },
+    { name: 'ViewMax', value: 18 },
+    { name: 'ConnectX', value: 17 },
+  ],
+  queues: {
+    delayedShipments: 4,
+    pendingReturns: 11,
+    inventoryRisk: 7,
+    openPurchaseOrders: 9,
+  },
+  recentOrders: [
+    { order_id: 'o-1', order_number: 'TZ-2026-74052131', recipient: '김민준', status: 'confirmed', total_amount: 1449000 },
+    { order_id: 'o-2', order_number: 'TZ-2026-74052132', recipient: '이서연', status: 'shipped', total_amount: 899000 },
+    { order_id: 'o-3', order_number: 'TZ-2026-74052133', recipient: '박지훈', status: 'delivered', total_amount: 249000 },
+  ],
+  riskInventory: [
+    { balance_id: 'b-1', name: 'NovaBook Air 14 OLED', sku: 'NB-A14-16-512', warehouse_name: '중앙창고', available_qty: 3, safety_qty: 12 },
+    { balance_id: 'b-2', name: 'SoundBuds Max', sku: 'SB-MAX-BLK', warehouse_name: '중앙창고', available_qty: 5, safety_qty: 10 },
+  ],
+};
+
 function startNext(app, port) {
   const command = process.platform === 'win32' ? 'cmd.exe' : 'npx';
   const args = process.platform === 'win32'
@@ -111,6 +184,8 @@ async function mockApi(page) {
     const json = body => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
     if (pathname === '/products/by-slug/nova-book-air-14') return json(product);
+    if (pathname === '/storefront/home') return json(homeResponse);
+    if (pathname === '/admin/dashboard') return json(dashboardResponse);
     if (pathname === '/cart/items') return json({ items: [] });
     if (pathname === '/admin/alerts') return json({ items: [{ id: 'alert-1', title: '품절 임박 SKU' }] });
     if (pathname === '/admin/warehouses') return json({ items: [{ id: 'wh-1', name: '중앙창고' }, { id: 'wh-2', name: '반품창고' }] });
@@ -134,7 +209,11 @@ async function capture() {
       waitFor(`http://127.0.0.1:${adminPort}/admin/storefront/`),
     ]);
 
-    const context = await browser.newContext({ viewport: { width: 1440, height: 1100 }, deviceScaleFactor: 1 });
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 1100 },
+      deviceScaleFactor: 1,
+      reducedMotion: 'reduce',
+    });
     await context.addInitScript(() => {
       localStorage.setItem('techzone-session', JSON.stringify({
         user: { id: 'admin-user', name: '관리자', role: 'admin', adminRole: 'super_admin', permissions: [] },
@@ -146,14 +225,20 @@ async function capture() {
     const page = await context.newPage();
     await mockApi(page);
 
-    await page.goto(`http://127.0.0.1:${storefrontPort}/products/nova-book-air-14/`, { waitUntil: 'networkidle' });
-    await page.screenshot({ path: path.join(outputDir, 'storefront-product-detail.png'), fullPage: false });
+    async function capturePage(url, filename) {
+      await page.goto(url, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1_000);
+      await page.screenshot({ path: path.join(outputDir, filename), fullPage: false });
+    }
 
-    await page.goto(`http://127.0.0.1:${adminPort}/admin/storefront/`, { waitUntil: 'networkidle' });
-    await page.screenshot({ path: path.join(outputDir, 'admin-storefront-cms.png'), fullPage: false });
-
-    await page.goto(`http://127.0.0.1:${adminPort}/admin/coupons/`, { waitUntil: 'networkidle' });
-    await page.screenshot({ path: path.join(outputDir, 'admin-coupon-ops.png'), fullPage: false });
+    await capturePage(
+      `http://127.0.0.1:${storefrontPort}/products/nova-book-air-14/`,
+      'storefront-product-detail.png',
+    );
+    await capturePage(`http://127.0.0.1:${storefrontPort}/`, 'storefront-home.png');
+    await capturePage(`http://127.0.0.1:${adminPort}/admin/`, 'admin-dashboard.png');
+    await capturePage(`http://127.0.0.1:${adminPort}/admin/storefront/`, 'admin-storefront-cms.png');
+    await capturePage(`http://127.0.0.1:${adminPort}/admin/coupons/`, 'admin-coupon-ops.png');
   } finally {
     await browser?.close().catch(() => {});
     storefront.kill();
