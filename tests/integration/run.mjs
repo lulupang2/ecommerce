@@ -51,6 +51,15 @@ assert.ok(search.items.some(item => item.name.toLowerCase().includes('orbit')));
 const media = await request('/media/upload-url', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ fileName: 'integration.jpg' }) });
 assert.ok(media.assetId && media.publicUrl);
 assert.equal(media.storage, 's3', 'Docker media storage must use MinIO/S3');
+const mediaUpload = await fetch(media.uploadUrl, {
+  method: 'PUT',
+  headers: { 'content-type': 'image/jpeg' },
+  body: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+});
+assert.equal(mediaUpload.status, 200, 'presigned media upload URL must accept the object');
+const mediaRead = await fetch(media.publicUrl);
+assert.equal(mediaRead.status, 200, 'uploaded product media must be publicly readable');
+assert.equal((await mediaRead.arrayBuffer()).byteLength, 4);
 const forbiddenMedia = await fetch(`${base}/media/upload-url`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${login.accessToken}` }, body: JSON.stringify({ fileName: 'forbidden.jpg' }) });
 assert.equal(forbiddenMedia.status, 403, 'customer must not issue media upload URL');
 await request(`/carts/${account.user.id}/items`, { method: 'POST', headers: userHeaders, body: JSON.stringify({ productId: product.id, name: product.name, brand: product.brand, image: product.image, price: product.price, quantity: 1 }) });
