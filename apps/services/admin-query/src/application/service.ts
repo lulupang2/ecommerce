@@ -1,18 +1,27 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { AdminQueryRepository } from '../infrastructure/persistence/repository';
 
 const { subscribe } = require('@techzone/messaging/bus') as {
   subscribe(service: string, patterns: string[], handler: (event: any) => Promise<void>): Promise<void>;
 };
+const logger = require('@techzone/observability/logger') as {
+  warn(message: string, fields?: Record<string, unknown>): void;
+};
 
 @Injectable()
 export class AdminQueryApplicationService implements OnModuleInit {
-  constructor(private readonly repository: AdminQueryRepository) {}
+  constructor(
+    private readonly repository: AdminQueryRepository,
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.repository.initialize();
@@ -22,7 +31,10 @@ export class AdminQueryApplicationService implements OnModuleInit {
         'product.*', 'order.*', 'payment.*', 'inventory.*', 'shipment.*',
         'return.*', 'purchase_order.*', 'admin.*', 'user.*', 'system.*',
       ],
-      event => this.repository.projectEvent(event),
+      async event => {
+        await this.repository.projectEvent(event);
+        await this.clearDashboardCache();
+      },
     );
     setTimeout(() => {
       this.repository.rebuild().catch(error => {
@@ -31,12 +43,41 @@ export class AdminQueryApplicationService implements OnModuleInit {
     }, 3000).unref();
   }
 
-  dashboard(fromValue?: string, toValue?: string) {
+  async dashboard(fromValue?: string, toValue?: string) {
     const to = toValue ? new Date(`${toValue}T23:59:59+09:00`) : new Date();
     const from = fromValue
       ? new Date(`${fromValue}T00:00:00+09:00`)
       : new Date(to.getTime() - 29 * 86_400_000);
-    return this.repository.dashboard(from, to);
+    const key = `dashboard:${from.toISOString()}:${to.toISOString()}`;
+    try {
+      const cached = await this.cache.get(key);
+      if (cached !== undefined && cached !== null) return cached;
+    } catch (error) {
+      logger.warn('cache.read_failed', {
+        key,
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+    const result = await this.repository.dashboard(from, to);
+    try {
+      await this.cache.set(key, result, 15_000);
+    } catch (error) {
+      logger.warn('cache.write_failed', {
+        key,
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+    return result;
+  }
+
+  private async clearDashboardCache(): Promise<void> {
+    try {
+      await this.cache.clear();
+    } catch (error) {
+      logger.warn('cache.clear_failed', {
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
   }
 
   async listResource(resource: string, query: any, user: any): Promise<any> {
@@ -67,6 +108,7 @@ export class AdminQueryApplicationService implements OnModuleInit {
 
   async rebuild(actorId: string, reason?: string): Promise<any> {
     const result = await this.repository.rebuild();
+    await this.clearDashboardCache();
     await this.repository.audit('admin.projection_rebuilt', {
       actorId,
       entityType: 'admin_projection',

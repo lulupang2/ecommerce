@@ -55,4 +55,13 @@ async function closeRateLimit() {
   redis = undefined;
 }
 
-module.exports = { hit, clear, closeRateLimit };
+async function rateLimitReadiness() {
+  const store = client();
+  if (!store) return { redis: 'not_configured' };
+  if (store.status === 'wait') await store.connect();
+  const response = await store.ping();
+  if (response !== 'PONG') throw new Error('Redis ping failed');
+  return { redis: 'ok' };
+}
+
+module.exports = { hit, clear, closeRateLimit, rateLimitReadiness };

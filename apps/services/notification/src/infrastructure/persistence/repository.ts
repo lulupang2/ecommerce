@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { desc, eq } from 'drizzle-orm';
 
-const crypto = require('node:crypto') as typeof import('node:crypto');
 const { database } = require('@techzone/database/db') as { database(service: string): any };
 import { notifications } from './schema';
 const { registerReliability } = require('@techzone/messaging/bus') as {
@@ -24,12 +23,15 @@ export class NotificationRepository {
     const message = event.type === 'order.confirmed'
       ? `주문 ${payload.orderId}이 완료되었습니다.`
       : `주문 ${payload.orderId}이 취소되었습니다.`;
-    await this.db.orm.insert(notifications).values({
-      id: crypto.randomUUID(),
-      userId: payload.userId,
-      type: event.type,
-      message,
-    });
+    await this.db.orm
+      .insert(notifications)
+      .values({
+        id: event.id,
+        userId: payload.userId,
+        type: event.type,
+        message,
+      })
+      .onConflictDoNothing({ target: notifications.id });
   }
 
   async list(userId: string): Promise<any[]> {

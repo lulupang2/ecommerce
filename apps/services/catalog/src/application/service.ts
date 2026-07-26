@@ -1,16 +1,76 @@
-import { ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { ForbiddenException, Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import type { Cache } from 'cache-manager';
 import { CatalogRepository } from '../infrastructure/persistence/repository';
 import { RichTextProvider } from '../infrastructure/providers/rich-text.provider';
 import { ProductListQuery } from '../domain/product-list-query';
+
+const { subscribe } = require('@techzone/messaging/bus') as {
+  subscribe(service: string, patterns: string[], handler: (event: any) => Promise<void>): Promise<void>;
+};
+const logger = require('@techzone/observability/logger') as {
+  warn(message: string, fields?: Record<string, unknown>): void;
+};
 
 @Injectable()
 export class CatalogApplicationService implements OnModuleInit {
   constructor(
     private readonly repository: CatalogRepository,
     private readonly richText: RichTextProvider,
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
 
-  onModuleInit() { return this.repository.initialize(); }
+  async onModuleInit(): Promise<void> {
+    await this.repository.initialize();
+    await subscribe(
+      'catalog-cache',
+      ['product.*', 'inventory.*'],
+      async () => this.clearPublicCache(),
+    );
+  }
+
+  private async remember<T>(key: string, ttl: number, loader: () => Promise<T>): Promise<T> {
+    try {
+      const cached = await this.cache.get<T>(key);
+      if (cached !== undefined && cached !== null) return cached;
+    } catch (error) {
+      logger.warn('cache.read_failed', {
+        key,
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+    const value = await loader();
+    if (value !== null && value !== undefined) {
+      try {
+        await this.cache.set(key, value, ttl);
+      } catch (error) {
+        logger.warn('cache.write_failed', {
+          key,
+          error: error instanceof Error ? error.message : 'unknown',
+        });
+      }
+    }
+    return value;
+  }
+
+  private async clearPublicCache(): Promise<void> {
+    try {
+      await this.cache.clear();
+    } catch (error) {
+      logger.warn('cache.clear_failed', {
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+  }
+
+  private productListCacheKey(query: ProductListQuery): string {
+    const normalized = Object.fromEntries(
+      Object.entries(query)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .sort(([left], [right]) => left.localeCompare(right)),
+    );
+    return `products:${JSON.stringify(normalized)}`;
+  }
 
   private responseProduct(row: any) {
     return {
@@ -36,31 +96,39 @@ export class CatalogApplicationService implements OnModuleInit {
   }
 
   async home(): Promise<any> {
-    const result = await this.repository.home();
-    return {
-      sections: result.sections.map((section: any) => ({
-        ...section,
-        products: section.products.map((row: any) => this.responseProduct(row)),
-      })),
-      categories: result.categories,
-      brands: result.brands,
-      shipping: { freeThreshold: 80_000, fee: 3_000 },
-      coupon: { code: 'TECHZONE10', label: '30만원 이상 10% 할인' },
-    };
+    return this.remember('storefront:home', 60_000, async () => {
+      const result = await this.repository.home();
+      return {
+        sections: result.sections.map((section: any) => ({
+          ...section,
+          products: section.products.map((row: any) => this.responseProduct(row)),
+        })),
+        categories: result.categories,
+        brands: result.brands,
+        shipping: { freeThreshold: 80_000, fee: 3_000 },
+        coupon: { code: 'TECHZONE10', label: '30만원 이상 10% 할인' },
+      };
+    });
   }
 
   async products(query: ProductListQuery): Promise<any> {
-    const result = await this.repository.products(query);
-    return {
-      items: result.rows.map((row: any) => this.responseProduct(row)),
-      page: result.page,
-      pageSize: result.pageSize,
-      total: result.total,
-      pageCount: result.pageCount,
-    };
+    return this.remember(this.productListCacheKey(query), 30_000, async () => {
+      const result = await this.repository.products(query);
+      return {
+        items: result.rows.map((row: any) => this.responseProduct(row)),
+        page: result.page,
+        pageSize: result.pageSize,
+        total: result.total,
+        pageCount: result.pageCount,
+      };
+    });
   }
 
   async detail(field: 'id' | 'slug', value: string): Promise<any | null> {
+    return this.remember(`product:${field}:${value}`, 20_000, () => this.loadDetail(field, value));
+  }
+
+  private async loadDetail(field: 'id' | 'slug', value: string): Promise<any | null> {
     const result = await this.repository.detail(field, value);
     if (!result) return null;
     const availability = await this.repository.variantAvailability(
@@ -106,11 +174,15 @@ export class CatalogApplicationService implements OnModuleInit {
     if (!purchases.includes(productId)) {
       throw new ForbiddenException({ code: 'PURCHASE_REQUIRED' });
     }
-    return this.repository.createReview(productId, user, input);
+    const result = await this.repository.createReview(productId, user, input);
+    await this.clearPublicCache();
+    return result;
   }
 
-  createQuestion(productId: string, user: any, input: any) {
-    return this.repository.createQuestion(productId, user, input);
+  async createQuestion(productId: string, user: any, input: any) {
+    const result = await this.repository.createQuestion(productId, user, input);
+    await this.clearPublicCache();
+    return result;
   }
 
   async wishlist(ownerId: string): Promise<any[]> {
@@ -126,15 +198,25 @@ export class CatalogApplicationService implements OnModuleInit {
   }
 
   sections() { return this.repository.sections(); }
-  createSection(input: any) { return this.repository.createSection(input); }
-  updateSection(id: string, input: any) { return this.repository.updateSection(id, input); }
+  async createSection(input: any) {
+    const result = await this.repository.createSection(input);
+    await this.clearPublicCache();
+    return result;
+  }
+  async updateSection(id: string, input: any) {
+    const result = await this.repository.updateSection(id, input);
+    await this.clearPublicCache();
+    return result;
+  }
 
-  createProduct(input: any, actorId: string) {
-    return this.repository.createProduct(
+  async createProduct(input: any, actorId: string) {
+    const result = await this.repository.createProduct(
       input,
       this.richText.sanitize(input.note),
       actorId,
     );
+    await this.clearPublicCache();
+    return result;
   }
 
   async updateProduct(id: string, input: any, actorId: string): Promise<any | null> {
@@ -144,11 +226,16 @@ export class CatalogApplicationService implements OnModuleInit {
       input.note === undefined ? null : this.richText.sanitize(input.note),
       actorId,
     );
+    await this.clearPublicCache();
     return result ? { ...result, note: this.richText.sanitize(result.note) } : null;
   }
 
   reviews() { return this.repository.reviews(); }
-  updateReview(id: string, status: string) { return this.repository.updateReview(id, status); }
+  async updateReview(id: string, status: string) {
+    const result = await this.repository.updateReview(id, status);
+    await this.clearPublicCache();
+    return result;
+  }
 
   async internalProducts(): Promise<any[]> {
     return (await this.repository.internalProducts()).map(row => ({

@@ -13,15 +13,17 @@
     "migrate": "node ../../../tools/migrations/run.mjs --service=admin-query"
   },
   "dependencies": {
+    "@nestjs/cache-manager": "^3.1.3",
+    "@nestjs/common": "^11.1.28",
     "@techzone/auth-platform": "*",
     "@techzone/config": "*",
     "@techzone/contracts": "*",
     "@techzone/database": "*",
     "@techzone/messaging": "*",
     "@techzone/observability": "*",
-    "@nestjs/common": "^11.1.28",
-    "drizzle-orm": "^0.45.2",
-    "class-validator": "^0.15.1"
+    "cache-manager": "^7.2.9",
+    "class-validator": "^0.15.1",
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@techzone/tsconfig": "*",

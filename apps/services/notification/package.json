@@ -13,13 +13,15 @@
     "migrate": "node ../../../tools/migrations/run.mjs --service=notification"
   },
   "dependencies": {
+    "@nestjs/bullmq": "^11.0.4",
+    "@nestjs/common": "^11.1.28",
     "@techzone/auth-platform": "*",
     "@techzone/config": "*",
     "@techzone/contracts": "*",
     "@techzone/database": "*",
     "@techzone/messaging": "*",
     "@techzone/observability": "*",
-    "@nestjs/common": "^11.1.28",
+    "bullmq": "^5.81.2",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {

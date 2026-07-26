@@ -6,6 +6,13 @@ x-service: &service
     NODE_ENV: "${NODE_ENV:-development}"
     RABBIT_URL: "amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672"
     REDIS_URL: redis://redis:6379
+    REDIS_CONNECTION_TIMEOUT_MS: "${REDIS_CONNECTION_TIMEOUT_MS:-2000}"
+    LOG_LEVEL: "${LOG_LEVEL:-info}"
+    PG_POOL_MAX: "${PG_POOL_MAX:-12}"
+    PG_IDLE_TIMEOUT_MS: "${PG_IDLE_TIMEOUT_MS:-30000}"
+    PG_CONNECTION_TIMEOUT_MS: "${PG_CONNECTION_TIMEOUT_MS:-5000}"
+    PG_STATEMENT_TIMEOUT_MS: "${PG_STATEMENT_TIMEOUT_MS:-10000}"
+    PG_QUERY_TIMEOUT_MS: "${PG_QUERY_TIMEOUT_MS:-12000}"
     AUTH_URL: http://auth:3001
     AUTH_JWKS_URL: http://auth:3001/.well-known/jwks.json
     AUTH_PRIVATE_KEY_BASE64: "${AUTH_PRIVATE_KEY_BASE64:-}"
@@ -50,7 +57,8 @@ services:
   redis:
     image: redis:7.4-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # BullMQ requires durable queue keys, so eviction must be disabled. Cache entries use TTLs.
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
     volumes: [redis-data:/data]
     healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 20 }
 

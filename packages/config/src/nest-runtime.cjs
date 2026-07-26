@@ -1,6 +1,8 @@
-const { Controller, Get, Module, Req, Res, ValidationPipe } = require('@nestjs/common');
+const { Controller, Get, Inject, Module, Req, Res, ValidationPipe } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { SwaggerModule, DocumentBuilder } = require('@nestjs/swagger');
+const { HealthCheckService, TerminusModule } = require('@nestjs/terminus');
+const { LoggerModule, Logger: PinoNestLogger } = require('nestjs-pino');
 const cookieParser = require('cookie-parser');
 const helmet = require('helmet');
 const { client } = require('@techzone/observability/metrics');
@@ -13,11 +15,19 @@ const { hit } = require('@techzone/auth-platform/rate-limit');
 
 function createPlatformModule(service, readiness) {
   class PlatformController {
+    constructor(health) {
+      this.health = health;
+    }
     live() { return { service, status: 'ok', uptime: process.uptime() }; }
     async ready(response) {
       try {
-        const checks = readiness ? await readiness() : { runtime: 'ok' };
-        return response.status(200).json({ service, status: 'ready', checks });
+        const result = await this.health.check([
+          async () => {
+            const checks = readiness ? await readiness() : { runtime: 'ok' };
+            return { dependencies: { status: 'up', ...checks } };
+          },
+        ]);
+        return response.status(200).json({ service, status: 'ready', checks: result.details });
       } catch (error) {
         return response.status(503).json({ service, status: 'not_ready', code: 'DEPENDENCY_UNAVAILABLE', message: error.message });
       }
@@ -35,6 +45,7 @@ function createPlatformModule(service, readiness) {
     }
   }
   Controller()(PlatformController);
+  Inject(HealthCheckService)(PlatformController, undefined, 0);
   Get('/health')(PlatformController.prototype, 'live', Object.getOwnPropertyDescriptor(PlatformController.prototype, 'live'));
   Get('/health/live')(PlatformController.prototype, 'live', Object.getOwnPropertyDescriptor(PlatformController.prototype, 'live'));
   Get('/health/ready')(PlatformController.prototype, 'ready', Object.getOwnPropertyDescriptor(PlatformController.prototype, 'ready'));
@@ -48,7 +59,11 @@ function createPlatformModule(service, readiness) {
   class ApplicationService {}
   class DomainRepository {}
   class ServiceModule {}
-  Module({ controllers: [PlatformController], providers: [ApplicationService, DomainRepository] })(ServiceModule);
+  Module({
+    imports: [TerminusModule],
+    controllers: [PlatformController],
+    providers: [ApplicationService, DomainRepository],
+  })(ServiceModule);
   Object.defineProperty(ServiceModule, 'name', { value: `${service[0].toUpperCase()}${service.slice(1)}Module` });
   return ServiceModule;
 }
@@ -56,7 +71,25 @@ function createPlatformModule(service, readiness) {
 function createRootModule(featureModule, service, readiness) {
   const PlatformModule = createPlatformModule(service, readiness);
   class RootModule {}
-  Module({ imports: [PlatformModule, featureModule] })(RootModule);
+  const StructuredLoggerModule = LoggerModule.forRoot({
+    pinoHttp: {
+      autoLogging: false,
+      level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+      redact: {
+        paths: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          'password',
+          'refreshToken',
+          'accessToken',
+          'phone',
+          'email',
+        ],
+        censor: '[REDACTED]',
+      },
+    },
+  });
+  Module({ imports: [StructuredLoggerModule, PlatformModule, featureModule] })(RootModule);
   return RootModule;
 }
 
@@ -86,6 +119,10 @@ function configureHttp(app, service) {
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     if (req.path.startsWith('/health') || req.path === '/metrics') return next();
+    const internalKey = req.headers['x-internal-key'];
+    if (internalKey && internalKey === (process.env.INTERNAL_API_KEY || 'techzone-internal')) {
+      return next();
+    }
     const limit = await hit(`rate:${service}:${req.ip}`, {
       limit: Number(process.env.RATE_LIMIT_PER_MINUTE || 120),
       windowSeconds: 60,
@@ -111,12 +148,22 @@ async function bootstrapNest({ module: featureModule, service, port, readiness, 
   let shuttingDown = false;
   const guardedReadiness = async () => {
     if (shuttingDown) throw new Error('Service is shutting down');
-    return readiness ? readiness() : { runtime: 'ok' };
+    if (readiness) return readiness();
+    const { databaseReadiness } = require('@techzone/database/db');
+    const { messagingReadiness } = require('@techzone/messaging/bus');
+    const { rateLimitReadiness } = require('@techzone/auth-platform/rate-limit');
+    const [databases, messaging, rateLimit] = await Promise.all([
+      databaseReadiness(),
+      messagingReadiness(),
+      rateLimitReadiness(),
+    ]);
+    return { runtime: 'ok', ...databases, ...messaging, ...rateLimit };
   };
   const rootModule = createRootModule(featureModule, service, guardedReadiness);
   const app = await NestFactory.create(rootModule, {
-    logger: false,
+    bufferLogs: true,
   });
+  app.useLogger(app.get(PinoNestLogger));
   configureHttp(app, service);
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
   app.useGlobalFilters(new StandardExceptionFilter());
