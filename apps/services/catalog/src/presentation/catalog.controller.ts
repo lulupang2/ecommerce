@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Delete, ForbiddenException, Get, HttpCode, NotFoundException,
+  Body, Controller, Delete, ForbiddenException, Get, Header, HttpCode, NotFoundException,
   Param, Patch, Post, Query, Req, UseGuards,
 } from '@nestjs/common';
 import {
@@ -50,6 +50,7 @@ export class CatalogController {
   }
 
   @Get('wishlists/:ownerId')
+  @Header('Cache-Control', 'private, no-store')
   @UseGuards(AuthGuard)
   async wishlist(@Param('ownerId') ownerId: string, @Req() request: any) {
     if (request.user.sub !== ownerId) throw new ForbiddenException({ code: 'FORBIDDEN' });

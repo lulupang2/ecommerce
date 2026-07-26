@@ -34,9 +34,8 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
   const [image, setImage] = useState(initialProduct?.images?.[0]?.url || initialProduct?.image || '');
   const [quantity, setQuantity] = useState(1);
   const [tab, setTab] = useState('detail');
-  const [wish, setWish] = useState(false);
   const [notice, setNotice] = useState('');
-  const { add } = useStore();
+  const { add, wishlistIds, toggleWishlist } = useStore();
 
   useEffect(() => {
     function initialize(data) {
@@ -44,7 +43,6 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
         setVariantId(data.variants?.[0]?.id || '');
         setImage(data.images?.[0]?.url || data.image);
         saveRecentlyViewed(data);
-        setWish(JSON.parse(localStorage.getItem('techzone-wishlist') || '[]').includes(data.id));
     }
     if (initialProduct) {
       initialize(initialProduct);
@@ -57,17 +55,10 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
 
   const variant = useMemo(() => product?.variants?.find(item => item.id === variantId), [product, variantId]);
 
-  function toggleWish() {
-    const values = JSON.parse(localStorage.getItem('techzone-wishlist') || '[]');
-    const next = wish ? values.filter(value => value !== product.id) : [...new Set([...values, product.id])];
-    localStorage.setItem('techzone-wishlist', JSON.stringify(next));
-    setWish(!wish);
-    setNotice(wish ? '찜 목록에서 제거했습니다.' : '찜 목록에 저장했습니다.');
-
-    const session = readSession();
-    if (session) {
-      api(`/wishlists/${session.user.id}/${product.id}`, { method: wish ? 'DELETE' : 'POST', headers: { authorization: `Bearer ${session.accessToken || session.token}` } }).catch(() => {});
-    }
+  async function toggleWish() {
+    const removing = wish;
+    const saved = await toggleWishlist(product.id);
+    setNotice(saved ? removing ? '찜 목록에서 제거했습니다.' : '찜 목록에 저장했습니다.' : '찜 상태를 저장하지 못했습니다.');
   }
 
   async function cart(buy = false) {
@@ -126,6 +117,7 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
   const summary = String(product.note || '').replace(/<[^>]+>/g, '').trim();
   const reviews = product.reviews || [];
   const questions = product.questions || [];
+  const wish = wishlistIds.includes(product.id);
 
   return (
     <main className="mx-auto max-w-[1440px] px-4 py-8 pb-40 md:px-8 md:pb-8">

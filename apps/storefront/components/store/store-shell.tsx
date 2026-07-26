@@ -4,28 +4,69 @@ import { ChevronDown, Heart, Home, Menu, Package, Search, ShoppingBag, UserRound
 import { API, api, categories, money, optionText } from '@techzone/api-client/store';
 import { getCurrentUserId, readSession } from '@techzone/api-client/session';
 
-const CartContext=createContext(null);
-export const useStore=()=>useContext(CartContext);
+const StoreContext=createContext(null);
+export const useStore=()=>useContext(StoreContext);
+const WISHLIST_KEY='techzone-wishlist';
 const mobileNavigation: any[] = [[Home,'홈','/'],[Menu,'카테고리','/shop/'],[Search,'검색','/shop/?focus=search'],[Heart,'찜','/mypage/?tab=wishlist'],[UserRound,'MY','/orders/']];
 
+function readLocalWishlist(){
+  try{
+    const value=JSON.parse(localStorage.getItem(WISHLIST_KEY)||'[]');
+    return Array.isArray(value)?[...new Set(value.filter(item=>typeof item==='string'))]:[];
+  }catch{return [];}
+}
+function writeLocalWishlist(productIds){localStorage.setItem(WISHLIST_KEY,JSON.stringify(productIds));}
+
 export default function StoreShell({children}){
-  const [cart,setCart]=useState([]),[cartOpen,setCartOpen]=useState(false),[query,setQuery]=useState(''),[suggestions,setSuggestions]=useState([]),[menu,setMenu]=useState(false);
+  const [cart,setCart]=useState([]),[wishlistIds,setWishlistIds]=useState([]),[cartOpen,setCartOpen]=useState(false),[query,setQuery]=useState(''),[suggestions,setSuggestions]=useState([]),[menu,setMenu]=useState(false);
   useEffect(()=>{
     api(`/carts/${getCurrentUserId()}`).then(data=>setCart(data.items||[])).catch(()=>{});
+    const local=readLocalWishlist();
+    setWishlistIds(local);
     const session=readSession();
+    let cancelled=false;
     if(session){
       const token=session.accessToken||session.token;
-      const local=JSON.parse(localStorage.getItem('techzone-wishlist')||'[]');
-      Promise.all(local.map(productId=>api(`/wishlists/${session.user.id}/${productId}`,{method:'POST',headers:{authorization:`Bearer ${token}`}}).catch(()=>null)));
+      Promise.all(local.map(productId=>api(`/wishlists/${session.user.id}/${productId}`,{method:'POST',headers:{authorization:`Bearer ${token}`}}).catch(()=>null)))
+        .then(()=>api(`/wishlists/${session.user.id}`,{cache:'no-store',headers:{authorization:`Bearer ${token}`}}))
+        .then(data=>{
+          if(cancelled)return;
+          const merged=[...new Set([...local,...(data.items||[]).map(item=>item.id)])];
+          localStorage.removeItem(WISHLIST_KEY);
+          setWishlistIds(merged);
+        })
+        .catch(()=>{});
     }
+    function syncAcrossTabs(event){if(event.key===WISHLIST_KEY&&!readSession())setWishlistIds(readLocalWishlist());}
+    window.addEventListener('storage',syncAcrossTabs);
+    return()=>{cancelled=true;window.removeEventListener('storage',syncAcrossTabs);};
   },[]);
   useEffect(()=>{if(query.trim().length<2){setSuggestions([]);return;}const timer=setTimeout(()=>api(`/products?q=${encodeURIComponent(query)}&pageSize=5`).then(data=>setSuggestions(data.items||[])).catch(()=>{}),200);return()=>clearTimeout(timer);},[query]);
   async function add(product,variant,quantity=1){const selected=variant||product.variants?.[0]||{id:product.variantId,sku:product.sku,salePrice:product.price,optionValues:product.optionValues};const existing=cart.find(item=>item.variant_id===selected.id);const item={productId:product.id,variantId:selected.id,sku:selected.sku,name:product.name,brand:product.brand,optionValues:selected.optionValues||{},image:product.image,price:Number(selected.salePrice||product.price),quantity:(existing?.quantity||0)+quantity};await api(`/carts/${getCurrentUserId()}/items`,{method:'POST',body:JSON.stringify(item)});setCart(current=>existing?current.map(value=>value.variant_id===selected.id?{...value,quantity:item.quantity}:value):[{product_id:item.productId,variant_id:item.variantId,sku:item.sku,name:item.name,brand:item.brand,option_values:item.optionValues,image:item.image,price:item.price,quantity:item.quantity},...current]);setCartOpen(true);}
   async function change(variantId,quantity){await api(`/carts/${getCurrentUserId()}/items/${variantId}`,{method:'PATCH',body:JSON.stringify({quantity})});setCart(current=>quantity<1?current.filter(item=>item.variant_id!==variantId):current.map(item=>item.variant_id===variantId?{...item,quantity}:item));}
+  async function toggleWishlist(productId){
+    const previous=wishlistIds;
+    const removing=previous.includes(productId);
+    const next=removing?previous.filter(id=>id!==productId):[...previous,productId];
+    setWishlistIds(next);
+    const session=readSession();
+    if(!session){
+      writeLocalWishlist(next);
+      return true;
+    }
+    const token=session.accessToken||session.token;
+    try{
+      await api(`/wishlists/${session.user.id}/${productId}`,{method:removing?'DELETE':'POST',headers:{authorization:`Bearer ${token}`}});
+      return true;
+    }catch{
+      setWishlistIds(previous);
+      return false;
+    }
+  }
   const count=cart.reduce((sum,item)=>sum+item.quantity,0),total=cart.reduce((sum,item)=>sum+Number(item.price)*item.quantity,0);
-  const value=useMemo(()=>({cart,count,total,add,change,setCartOpen}),[cart,count,total]);
+  const value=useMemo(()=>({cart,count,total,wishlistIds,add,change,toggleWishlist,setCartOpen}),[cart,count,total,wishlistIds]);
   const session=typeof window==='undefined'?null:readSession();
-  return <CartContext.Provider value={value}><div className="min-h-screen bg-white pb-16 text-slate-950 md:pb-0">
+  return <StoreContext.Provider value={value}><div className="min-h-screen bg-white pb-16 text-slate-950 md:pb-0">
     <a href="#storefront-main" className="fixed left-4 top-4 z-[100] -translate-y-24 rounded-lg bg-slate-950 px-4 py-3 text-sm font-bold text-white transition focus:translate-y-0">본문 바로가기</a>
     <div className="bg-indigo-700 px-4 py-2 text-center text-[11px] font-bold text-white">TECHZONE10 쿠폰 · 30만원 이상 구매 시 최대 5만원 할인</div>
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur"><div className="mx-auto flex h-18 max-w-[1440px] items-center gap-6 px-4 md:px-8">
@@ -42,5 +83,5 @@ export default function StoreShell({children}){
       <div className="flex-1 overflow-auto p-6">{cart.length?cart.map(item=><article key={item.variant_id} className="mb-5 grid grid-cols-[88px_1fr] gap-4"><img src={item.image} alt="" className="h-24 w-22 rounded-xl object-cover"/><div><b className="text-sm">{item.name}</b><p className="mt-1 text-xs text-slate-500">{optionText(item.option_values)}</p><p className="mt-1 text-sm font-black">{money(item.price)}</p><div className="mt-2 inline-flex items-center rounded-lg border"><button aria-label={`${item.name} 수량 줄이기`} className="px-3 py-1" onClick={()=>change(item.variant_id,item.quantity-1)}>−</button><span aria-live="polite" className="px-2 text-xs">{item.quantity}</span><button aria-label={`${item.name} 수량 늘리기`} className="px-3 py-1" onClick={()=>change(item.variant_id,item.quantity+1)}>+</button></div></div></article>):<div className="py-20 text-center"><ShoppingBag className="mx-auto text-slate-300" size={44}/><p className="mt-4 text-sm text-slate-500">장바구니가 비어 있습니다.</p></div>}</div>
       <div className="border-t p-6"><div className="mb-2 flex justify-between font-black"><span>상품 금액</span><span>{money(total)}</span></div><p className="mb-5 text-xs text-slate-400">{total>=80000?'무료배송이 적용됩니다.':`${money(80000-total)} 더 담으면 무료배송`}</p><a href="/cart/" className={`grid h-13 place-items-center rounded-xl bg-indigo-600 font-bold text-white ${!cart.length?'pointer-events-none opacity-40':''}`}>장바구니 확인</a></div>
     </aside>
-  </div></CartContext.Provider>;
+  </div></StoreContext.Provider>;
 }

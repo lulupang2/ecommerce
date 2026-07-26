@@ -25,7 +25,7 @@ export default function Page() {
     }
 
     Promise.allSettled([
-      api(`/wishlists/${activeSession.user.id}`),
+      api(`/wishlists/${activeSession.user.id}`, { cache: 'no-store' }),
       api(`/orders?userId=${encodeURIComponent(activeSession.user.id)}`),
     ]).then(([wishlistResult, orderResult]) => {
       if (wishlistResult.status === 'fulfilled') setWishlist(wishlistResult.value.items || []);

@@ -84,7 +84,15 @@ export class ApiGatewayApplicationService {
       options,
     );
     const responseHeaders: Record<string, string | string[]> = {};
-    for (const name of ['content-type', 'x-request-id', 'x-correlation-id', 'x-csrf-token']) {
+    for (const name of [
+      'content-type',
+      'cache-control',
+      'etag',
+      'last-modified',
+      'x-request-id',
+      'x-correlation-id',
+      'x-csrf-token',
+    ]) {
       const value = response.headers.get(name);
       if (value) responseHeaders[name] = value;
     }

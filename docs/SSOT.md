@@ -168,6 +168,7 @@
 - `GET /wishlists/:userId`
 - `POST|DELETE /wishlists/:userId/:productId`
 - 찜 목록 조회·변경은 로그인한 JWT subject와 `:userId`가 일치할 때만 허용합니다.
+- 회원별 찜 목록 응답은 `Cache-Control: private, no-store`로 제공하며 로그인 시 로컬 찜과 서버 찜을 합집합으로 병합합니다. 병합 성공 후 게스트용 로컬 목록을 비워 로그아웃 뒤 회원 데이터가 노출되지 않게 합니다.
 
 ### 관리자
 
