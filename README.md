@@ -174,7 +174,10 @@ npm run build:mobile
 npm run mobile:sync
 ```
 
-GitHub Actions는 정적 검증, 계약 테스트, Docker 통합, 보안, E2E, Lighthouse 성능·SEO 예산, resilience, Kubernetes manifest 검증, Android debug APK 빌드를 순서대로 확인합니다.
+기본 GitHub Actions는 정적 검증, 계약 테스트, 캐시된 Docker 통합, 보안, E2E,
+Lighthouse 성능·SEO 예산, resilience, Kubernetes manifest 검증을 확인합니다.
+Android debug APK는 기능 안정화 후 `TECHZONE Android Verification` 수동
+워크플로우에서 별도로 검증합니다.
 
 ## 문서
 

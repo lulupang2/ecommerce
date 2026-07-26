@@ -76,6 +76,10 @@ npm run k8s:validate -- techzone-k8s.json
 
 ## Android debug APK
 
+Android 검증은 기본 PR CI의 후순위입니다. 필요할 때 GitHub Actions의
+`TECHZONE Android Verification`을 수동 실행하거나 아래 명령으로 로컬에서
+확인합니다.
+
 ```bash
 npm run build:mobile
 npm run mobile:sync
