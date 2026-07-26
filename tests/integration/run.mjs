@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 
 const base = process.env.API_BASE || 'http://127.0.0.1:18080/api';
@@ -47,6 +48,141 @@ const inventoryBefore = await request(`/inventory/${product.id}`);
 const inventoryList = await request('/inventory', { headers: adminHeaders });
 assert.ok(Array.isArray(inventoryList.items), 'admin inventory list must be available');
 await request(`/inventory/${product.id}`, { method: 'PATCH', headers: adminHeaders, body: JSON.stringify({ availableQty: inventoryBefore.available_qty, reason: 'integration inventory verification' }) });
+
+const raceStock = inventoryList.items.find(item =>
+  item.product_id !== product.id
+  && item.warehouse_code === 'WH-SEOUL'
+  && Number(item.available_qty) > 0);
+assert.ok(raceStock, 'a second sellable variant is required for reservation concurrency verification');
+const raceBalances = inventoryList.items.filter(item =>
+  item.variant_id === raceStock.variant_id
+  && item.warehouse_code !== 'WH-RETURN');
+for (const balance of raceBalances) {
+  await request(`/inventory/variants/${raceStock.variant_id}`, {
+    method: 'PATCH',
+    headers: adminHeaders,
+    body: JSON.stringify({
+      availableQty: balance.warehouse_id === raceStock.warehouse_id ? 1 : 0,
+      warehouseId: balance.warehouse_id,
+      reason: 'integration concurrent reservation verification',
+    }),
+  });
+}
+const [raceQuoteA, raceQuoteB] = await Promise.all([
+  request('/checkout/quote', {
+    method: 'POST',
+    body: JSON.stringify({ items: [{ variantId: raceStock.variant_id, quantity: 1 }] }),
+  }),
+  request('/checkout/quote', {
+    method: 'POST',
+    body: JSON.stringify({ items: [{ variantId: raceStock.variant_id, quantity: 1 }] }),
+  }),
+]);
+const raceShipping = {
+  recipient: 'Concurrency Test',
+  phone: '010-1111-2222',
+  address: 'Seoul, Korea',
+};
+const [raceOrderA, raceOrderB] = await Promise.all([
+  request('/orders', {
+    method: 'POST',
+    headers: { ...userHeaders, 'idempotency-key': crypto.randomUUID() },
+    body: JSON.stringify({
+      userId: account.user.id,
+      quoteToken: raceQuoteA.quoteToken,
+      shipping: raceShipping,
+      paymentMethod: 'card',
+    }),
+  }),
+  request('/orders', {
+    method: 'POST',
+    headers: { ...userHeaders, 'idempotency-key': crypto.randomUUID() },
+    body: JSON.stringify({
+      userId: account.user.id,
+      quoteToken: raceQuoteB.quoteToken,
+      shipping: raceShipping,
+      paymentMethod: 'card',
+    }),
+  }),
+]);
+let raceOrders = [];
+for (let attempt = 0; attempt < 40; attempt += 1) {
+  await new Promise(resolve => setTimeout(resolve, 250));
+  raceOrders = await Promise.all(
+    [raceOrderA.id, raceOrderB.id].map(id => request(`/orders/${id}`, { headers: userHeaders })),
+  );
+  if (
+    raceOrders.filter(value => ['confirmed', 'preparing'].includes(value.status)).length === 1
+    && raceOrders.filter(value => value.status === 'cancelled').length === 1
+  ) break;
+}
+const raceWinner = raceOrders.find(value => ['confirmed', 'preparing'].includes(value.status));
+const raceLoser = raceOrders.find(value => value.status === 'cancelled');
+assert.ok(raceWinner, 'exactly one concurrent order must reserve the last unit');
+assert.ok(raceLoser, 'the competing order must be cancelled without overselling');
+let loserPayment;
+for (let attempt = 0; attempt < 20; attempt += 1) {
+  await new Promise(resolve => setTimeout(resolve, 250));
+  loserPayment = await request(`/payments/${raceLoser.id}`);
+  if (loserPayment.status === 'refunded') break;
+}
+assert.equal(loserPayment.status, 'refunded', 'failed inventory reservation must refund approved payment');
+const cancelledPaymentRetry = await fetch(`${base}/payments/confirm`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() },
+  body: JSON.stringify({
+    orderId: raceLoser.id,
+    amount: Number(raceLoser.total_amount),
+    paymentKey: `cancelled_retry_${raceLoser.id}`,
+  }),
+});
+assert.equal(cancelledPaymentRetry.status, 409, 'cancelled orders must not be payable again');
+const raceProductSoldOut = await request(`/products/${raceStock.product_id}`);
+assert.equal(
+  raceProductSoldOut.variants.find(variant => variant.id === raceStock.variant_id)?.availableQty,
+  0,
+  'the winning reservation must consume the only available unit',
+);
+execFileSync('docker', [
+  'compose',
+  'exec',
+  '-T',
+  'postgres',
+  'psql',
+  '-U',
+  'canvas',
+  '-d',
+  'inventory',
+  '-v',
+  'ON_ERROR_STOP=1',
+  '-c',
+  `UPDATE inventory_reservations
+   SET status='reserved',expires_at=now()-interval '1 second',updated_at=now()
+   WHERE order_id='${raceWinner.id}' AND status='confirmed'`,
+], { stdio: 'pipe' });
+let expiredOrder;
+for (let attempt = 0; attempt < 40; attempt += 1) {
+  await new Promise(resolve => setTimeout(resolve, 250));
+  expiredOrder = await request(`/orders/${raceWinner.id}`, { headers: userHeaders });
+  if (expiredOrder.status === 'cancelled') break;
+}
+assert.equal(expiredOrder.status, 'cancelled', 'expired reservation must cancel the pending fulfillment');
+let restoredVariant;
+for (let attempt = 0; attempt < 20; attempt += 1) {
+  await new Promise(resolve => setTimeout(resolve, 250));
+  const restoredProduct = await request(`/products/${raceStock.product_id}`);
+  restoredVariant = restoredProduct.variants.find(variant => variant.id === raceStock.variant_id);
+  if (restoredVariant?.availableQty === 1) break;
+}
+assert.equal(restoredVariant?.availableQty, 1, 'order cancellation must release reserved stock exactly once');
+let expiredPayment;
+for (let attempt = 0; attempt < 20; attempt += 1) {
+  await new Promise(resolve => setTimeout(resolve, 250));
+  expiredPayment = await request(`/payments/${raceWinner.id}`);
+  if (expiredPayment.status === 'refunded') break;
+}
+assert.equal(expiredPayment.status, 'refunded', 'expired reservation must refund approved payment');
+
 const search = await request('/search?q=orbit');
 assert.ok(search.items.some(item => item.name.toLowerCase().includes('orbit')));
 const media = await request('/media/upload-url', { method: 'POST', headers: adminHeaders, body: JSON.stringify({ fileName: 'integration.jpg' }) });
@@ -89,6 +225,16 @@ const orderKey = crypto.randomUUID();
 const order = await request('/orders', { method: 'POST', headers: { ...userHeaders, 'idempotency-key': orderKey }, body: JSON.stringify({ userId: account.user.id, items: [{ productId: product.id, name: product.name, brand: product.brand, image: product.image, price: product.price, quantity: 1 }], shipping: { recipient: 'Integration Test', phone: '010-0000-0000', address: 'Seoul, Korea' } }) });
 const replayedOrder = await request('/orders', { method: 'POST', headers: { ...userHeaders, 'idempotency-key': orderKey }, body: JSON.stringify({ userId: account.user.id, items: [{ productId: product.id, name: product.name, brand: product.brand, image: product.image, price: product.price, quantity: 1 }], shipping: { recipient: 'Integration Test', phone: '010-0000-0000', address: 'Seoul, Korea' } }) });
 assert.equal(replayedOrder.id, order.id, 'same Idempotency-Key must replay the original order');
+const mismatchedPayment = await fetch(`${base}/payments/confirm`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() },
+  body: JSON.stringify({
+    orderId: order.id,
+    amount: order.totalAmount - 1,
+    paymentKey: `mismatch_${order.id}`,
+  }),
+});
+assert.equal(mismatchedPayment.status, 409, 'payment must reject an amount that differs from the canonical order');
 const payment = await request('/payments/confirm', { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ orderId: order.id, amount: order.totalAmount, paymentKey: `integration_${order.id}`, order: { userId: account.user.id, items: [{ productId: product.id, name: product.name, brand: product.brand, image: product.image, price: product.price, quantity: 1 }] } }) });
 assert.equal(payment.status, 'approved');
 let result;

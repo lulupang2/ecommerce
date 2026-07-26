@@ -19,6 +19,7 @@ export class OrderApplicationService implements OnModuleInit {
       'payment.refunded',
       'inventory.reserved',
       'inventory.failed',
+      'inventory.reservation_expired',
       'shipment.created',
       'shipment.shipped',
       'shipment.delivered',
@@ -98,22 +99,13 @@ export class OrderApplicationService implements OnModuleInit {
         }
         items = quote.lines;
       } else {
-        items = input.items || [];
-        if (!items.length) {
+        const legacyItems = input.items || [];
+        if (!legacyItems.length) {
           return { status: 400, body: { code: 'INVALID_ORDER_ITEM' } };
         }
-        const subtotal = items.reduce(
-          (sum: number, item: any) => sum + Number(item.price) * Number(item.quantity),
-          0,
-        );
-        quote = {
-          subtotalAmount: subtotal,
-          discountAmount: 0,
-          shippingFee: 0,
-          totalAmount: subtotal,
-          taxAmount: Math.round(subtotal / 11),
-          coupon: null,
-        };
+        const normalizedItems = await this.repository.normalizeQuoteItems(legacyItems);
+        quote = await this.repository.calculateQuote(normalizedItems);
+        items = quote.lines;
       }
     } catch (error) {
       const expired = (error as any).name === 'TokenExpiredError';
@@ -126,7 +118,12 @@ export class OrderApplicationService implements OnModuleInit {
       return { status: 409, body: { code: 'COUPON_ALREADY_USED' } };
     }
     const id = crypto.randomUUID();
-    const orderNumber = `TZ-${new Date().getFullYear()}-${Date.now().toString().slice(-8)}`;
+    const orderNumber = [
+      'TZ',
+      new Date().getFullYear(),
+      Date.now().toString(36).toUpperCase(),
+      crypto.randomBytes(2).toString('hex').toUpperCase(),
+    ].join('-');
     const paymentMethod = input.paymentMethod || 'card';
     const payload = {
       orderId: id,

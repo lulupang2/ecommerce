@@ -40,4 +40,31 @@ for (const [index, document] of documents.entries()) {
   identities.add(key);
 }
 
+const requiredServiceUrls = [
+  'AUTH_URL',
+  'CATALOG_URL',
+  'CART_URL',
+  'ORDER_URL',
+  'PAYMENT_URL',
+  'INVENTORY_URL',
+  'NOTIFICATION_URL',
+  'SEARCH_URL',
+  'MEDIA_URL',
+  'FULFILLMENT_URL',
+  'PROCUREMENT_URL',
+  'ADMIN_URL',
+];
+for (const deployment of documents.filter(document => document.kind === 'Deployment')) {
+  const variables = new Set(
+    (deployment.spec?.template?.spec?.containers?.[0]?.env || [])
+      .map(variable => variable.name),
+  );
+  const missing = requiredServiceUrls.filter(name => !variables.has(name));
+  if (missing.length) {
+    throw new Error(
+      `Deployment ${deployment.metadata.name} is missing service discovery variables: ${missing.join(', ')}`,
+    );
+  }
+}
+
 console.log(`Validated ${documents.length} Kubernetes resources.`);

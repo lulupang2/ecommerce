@@ -83,6 +83,22 @@ export class InventoryController {
     return this.send(response, result);
   }
 
+  @Patch('inventory/variants/:variantId')
+  @UseGuards(AuthGuard, RoleGuard('admin'), PermissionGuard('inventory.update'))
+  async adjustVariant(
+    @Param('variantId') variantId: string,
+    @Body() body: InventoryAdjustmentDto,
+    @Req() request: any,
+    @Res() response: any,
+  ) {
+    const result = await this.application.idempotent(
+      request,
+      'inventory.variant.adjust',
+      () => this.application.adjustVariant(variantId, body, request.user.sub),
+    );
+    return this.send(response, result);
+  }
+
   @Post('inventory/operations/transfers')
   @UseGuards(AuthGuard, RoleGuard('admin'), PermissionGuard('inventory.update'))
   async transfer(

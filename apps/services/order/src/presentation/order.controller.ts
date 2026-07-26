@@ -179,6 +179,14 @@ export class OrderController {
     return { items: await this.application.orderItems(id) };
   }
 
+  @Get('internal/orders/:id')
+  @UseGuards(InternalGuard)
+  async internalOrder(@Param('id') id: string) {
+    const result = await this.application.detail(id);
+    if (!result) throw new NotFoundException({ code: 'NOT_FOUND' });
+    return result;
+  }
+
   @Get('internal/users/:id/purchases')
   @UseGuards(InternalGuard)
   async purchases(@Param('id') id: string) {

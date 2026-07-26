@@ -32,7 +32,7 @@ erDiagram
   PRODUCT_VARIANT ||--o{ SERIAL_NUMBER : identifies
 ```
 
-상품의 노출 단위는 product, 판매·가격·재고 단위는 variant다. `available_qty`, `reserved_qty`, `damaged_qty`, `incoming_qty`는 분리한다. 조정·입고·예약·출고·이동은 movement 원장을 남기며 가용 수량을 음수로 만들 수 없다.
+상품의 노출 단위는 product, 판매·가격·재고 단위는 variant다. `available_qty`, `reserved_qty`, `damaged_qty`, `incoming_qty`는 분리한다. 주문 예약은 여러 활성 출고 창고에 분할될 수 있으며 `(order_id, warehouse_id, variant_id)`로 유일하다. 예약·해제는 주문 전체를 단일 transaction으로 처리하고 `reserved → confirmed → committed` 또는 `released` 상태 이력을 남긴다. 조정·입고·예약·해제·출고·이동은 movement 원장을 남기며 가용 수량을 음수로 만들 수 없다.
 
 ## 주문과 이행
 

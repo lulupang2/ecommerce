@@ -137,6 +137,8 @@
 - 가격이 변경되면 `409 PRICE_CHANGED`를 반환합니다.
 - quote가 만료되면 `410 QUOTE_EXPIRED`를 반환합니다.
 - 쿠폰은 서버에서 최소 주문금액, 최대 할인액, 중복 사용 여부를 검증합니다.
+- 결제 확인은 클라이언트의 주문 상품·금액 snapshot을 신뢰하지 않고 Order 원본을 다시 조회합니다. 승인 요청 금액이 주문 합계와 다르면 `409 PAYMENT_AMOUNT_MISMATCH`, 취소·환불된 주문이면 `409 ORDER_NOT_PAYABLE`을 반환합니다.
+- 자동 승인과 수동 확인이 동시에 도착해도 주문별 DB lock으로 승인 transaction과 `payment.approved` 이벤트를 한 번만 생성합니다.
 - 결제 승인 금액보다 환불 누적 금액이 클 수 없습니다.
 - 같은 `Idempotency-Key` 요청은 상태를 한 번만 변경합니다.
 
@@ -144,9 +146,12 @@
 
 - 재고 수량은 `available`, `reserved`, `damaged`, `incoming`으로 분리합니다.
 - 가용 재고는 음수가 될 수 없습니다.
-- 주문 확정 시 variant 단위로 재고를 예약합니다.
-- 출고 시 예약 재고를 차감합니다.
-- 입고, 예약, 조정, 이동은 모두 `inventory_movements` 원장으로 기록합니다.
+- 결제 승인 후 variant 단위로 재고를 예약하며, 한 주문의 모든 항목은 단일 DB transaction에서 성공하거나 모두 롤백됩니다.
+- 가용 재고 조회와 예약은 모두 활성 출고 창고(`central`, `fulfillment`) 범위를 사용하며 여러 창고에 걸쳐 할당할 수 있습니다.
+- 예약은 `reserved → confirmed → committed` 상태로 전이합니다. 주문 확정 전 30분이 지나면 만료되고, 주문 취소 시에는 `released`로 전환하면서 가용 수량을 복원합니다.
+- 출고 시 `reserved_qty`를 차감하고 이미 예약 때 차감한 `available_qty`는 다시 차감하지 않습니다.
+- 입고, 예약, 해제, 조정, 이동은 모두 `inventory_movements` 원장으로 기록합니다.
+- 관리자 재고 조정은 `variantId + warehouseId`를 명시하며 상품 단위 호환 API도 실제 balance의 variant를 먼저 결정합니다.
 - SKU, 주문번호, 송장번호는 unique입니다.
 
 ## 9. 공개 API 기준
@@ -233,6 +238,9 @@ variant의 정가가 판매가보다 큰 상품만 반환합니다.
 - `payment.refunded`
 - `inventory.received`
 - `inventory.reserved`
+- `inventory.released`
+- `inventory.reservation_expired`
+- `inventory.failed`
 - `inventory.adjusted`
 - `inventory.transferred`
 - `shipment.created`

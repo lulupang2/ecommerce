@@ -146,13 +146,13 @@ services:
   payment:
     <<: *service
     command: node apps/services/payment/dist/main.js
-    environment: { <<: *common-env, PORT: 3005, SERVICE_NAME: payment, DATABASE_URL: "postgres://canvas:${POSTGRES_PASSWORD:-canvas}@postgres:5432/payments", TOSS_SECRET_KEY: "${TOSS_SECRET_KEY:-}" }
+    environment: { <<: *common-env, PORT: 3005, SERVICE_NAME: payment, DATABASE_URL: "postgres://canvas:${POSTGRES_PASSWORD:-canvas}@postgres:5432/payments", ORDER_URL: http://order:3004, TOSS_SECRET_KEY: "${TOSS_SECRET_KEY:-}" }
     depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
 
   inventory:
     <<: *service
     command: node apps/services/inventory/dist/main.js
-    environment: { <<: *common-env, PORT: 3006, SERVICE_NAME: inventory, DATABASE_URL: "postgres://canvas:${POSTGRES_PASSWORD:-canvas}@postgres:5432/inventory", CATALOG_URL: http://catalog:3002 }
+    environment: { <<: *common-env, PORT: 3006, SERVICE_NAME: inventory, DATABASE_URL: "postgres://canvas:${POSTGRES_PASSWORD:-canvas}@postgres:5432/inventory", CATALOG_URL: http://catalog:3002, RESERVATION_SWEEP_INTERVAL_MS: "${RESERVATION_SWEEP_INTERVAL_MS:-2000}" }
     depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
 
   notification:

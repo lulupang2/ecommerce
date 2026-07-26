@@ -56,11 +56,28 @@ async function connectWithRetry(connectionString, service, maxAttempts = 12) {
 }
 
 async function migrateService(service, { database, workspace }) {
-  const baseline = await fs.readFile(path.join(root, 'apps', 'services', workspace, 'drizzle', '0000_baseline.sql'), 'utf8');
+  const migrationDirectory = path.join(root, 'apps', 'services', workspace, 'drizzle');
+  const migrationFiles = (await fs.readdir(migrationDirectory))
+    .filter(file => file.endsWith('.sql'))
+    .sort((left, right) => left.localeCompare(right));
+  const serviceMigrations = await Promise.all(
+    migrationFiles.map(async file => ({
+      file,
+      sql: await fs.readFile(path.join(migrationDirectory, file), 'utf8'),
+    })),
+  );
   const reliability = await fs.readFile(path.join(root, 'packages', 'messaging', 'migrations', '0000_reliability.sql'), 'utf8');
   const statements = [
-    ...baseline.split('-- statement-breakpoint').map(value => value.trim()).filter(Boolean),
-    reliability,
+    ...serviceMigrations.flatMap(migration =>
+      migration.sql
+        .split('-- statement-breakpoint')
+        .map((value, index) => ({
+          source: `${migration.file}#${index + 1}`,
+          sql: value.trim(),
+        }))
+        .filter(statement => statement.sql),
+    ),
+    { source: 'messaging/0000_reliability.sql', sql: reliability },
   ];
   const user = encodeURIComponent(process.env.POSTGRES_USER || 'canvas');
   const password = encodeURIComponent(process.env.POSTGRES_PASSWORD || 'canvas');
@@ -70,18 +87,18 @@ async function migrateService(service, { database, workspace }) {
     await client.query(`CREATE TABLE IF NOT EXISTS drizzle_migrations(id TEXT PRIMARY KEY,checksum TEXT NOT NULL,applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
     for (let index = 0; index < statements.length; index += 1) {
       const statement = statements[index];
-      const checksum = crypto.createHash('sha256').update(statement).digest('hex');
+      const checksum = crypto.createHash('sha256').update(statement.sql).digest('hex');
       const id = `${service}-${String(index + 1).padStart(4, '0')}-${checksum.slice(0, 12)}`;
       const exists = await client.query(`SELECT 1 FROM drizzle_migrations WHERE id=$1`, [id]);
       if (exists.rowCount) continue;
       await client.query('BEGIN');
       try {
-        await client.query(statement);
+        await client.query(statement.sql);
         await client.query(`INSERT INTO drizzle_migrations(id,checksum) VALUES($1,$2)`, [id, checksum]);
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');
-        throw new Error(`${service} migration ${index + 1}: ${error.message}`);
+        throw new Error(`${service} migration ${statement.source}: ${error.message}`);
       }
     }
     console.log(JSON.stringify({ service, database, migrations: statements.length, status: 'ready' }));
