@@ -1,4 +1,5 @@
 x-service: &service
+  image: "${TECHZONE_SERVICE_IMAGE:-techzone-service:local}"
   build: { context: ., dockerfile: infra/docker/service.Dockerfile }
   restart: unless-stopped
   environment: &common-env
@@ -208,6 +209,7 @@ services:
     depends_on: [auth, catalog, cart, order, payment, inventory, notification, search, media, fulfillment, procurement, admin]
 
   storefront:
+    image: "${TECHZONE_STOREFRONT_IMAGE:-techzone-storefront:local}"
     build:
       context: .
       dockerfile: infra/docker/frontend.Dockerfile
@@ -217,6 +219,7 @@ services:
     depends_on: { gateway: { condition: service_healthy } }
 
   admin-web:
+    image: "${TECHZONE_ADMIN_IMAGE:-techzone-admin:local}"
     build:
       context: .
       dockerfile: infra/docker/frontend.Dockerfile

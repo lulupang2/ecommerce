@@ -286,3 +286,5 @@ variant의 정가가 판매가보다 큰 상품만 반환합니다.
 - Performance와 TBT는 모바일 에뮬레이션을 사용하는 공유 CI 러너의 변동성을 고려한 회귀 차단선이며, 실제 측정값은 Lighthouse 아티팩트에서 계속 추적합니다.
 - HTML 리포트와 원본 JSON은 CI의 `lighthouse-reports` artifact로 보존합니다.
 - Capacitor 정적 빌드는 동일 화면 컴포넌트를 사용하되 서버 선로딩 없이 앱 런타임 API로 데이터를 가져옵니다.
+- Android 정적 빌드·Capacitor sync·debug APK는 기본 PR CI와 분리한 수동
+  `TECHZONE Android Verification` 워크플로우에서 후순위로 검증합니다.

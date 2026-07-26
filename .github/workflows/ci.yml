@@ -37,7 +37,40 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: docker compose up -d --build
+      - uses: docker/setup-buildx-action@v4
+      - name: Build cached service image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infra/docker/service.Dockerfile
+          load: true
+          tags: techzone-service:local
+          provenance: false
+          cache-from: type=gha,scope=techzone-service
+          cache-to: type=gha,scope=techzone-service,mode=max,ignore-error=true
+      - name: Build cached storefront image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infra/docker/frontend.Dockerfile
+          build-args: APP_NAME=storefront
+          load: true
+          tags: techzone-storefront:local
+          provenance: false
+          cache-from: type=gha,scope=techzone-storefront
+          cache-to: type=gha,scope=techzone-storefront,mode=max,ignore-error=true
+      - name: Build cached admin image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: infra/docker/frontend.Dockerfile
+          build-args: APP_NAME=admin
+          load: true
+          tags: techzone-admin:local
+          provenance: false
+          cache-from: type=gha,scope=techzone-admin
+          cache-to: type=gha,scope=techzone-admin,mode=max,ignore-error=true
+      - run: docker compose up -d --no-build
       - run: npm run test:security
       - run: npm run test:integration
       - run: npm run test:storefront
