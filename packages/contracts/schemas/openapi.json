@@ -51,6 +51,25 @@
           "total": { "type": "integer", "minimum": 0 },
           "pageCount": { "type": "integer", "minimum": 1 }
         }
+      },
+      "ProductVariant": {
+        "type": "object",
+        "required": ["id", "sku", "listPrice", "salePrice", "status", "availableQty", "inStock"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "sku": { "type": "string" },
+          "modelNumber": { "type": ["string", "null"] },
+          "optionValues": { "type": "object", "additionalProperties": { "type": "string" } },
+          "listPrice": { "type": "integer", "minimum": 0 },
+          "salePrice": { "type": "integer", "minimum": 0 },
+          "status": { "type": "string", "enum": ["active", "inactive", "sold_out"] },
+          "availableQty": {
+            "description": "중앙 출고 창고의 실시간 가용 재고. Inventory 조회 장애 시 null",
+            "type": ["integer", "null"],
+            "minimum": 0
+          },
+          "inStock": { "type": ["boolean", "null"] }
+        }
       }
     },
     "parameters": {
@@ -89,6 +108,50 @@
           { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["popular", "newest", "discount", "price_asc", "price_desc"] } }
         ],
         "responses": { "200": { "description": "상품 목록", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Page" } } } } }
+      }
+    },
+    "/products/by-slug/{slug}": {
+      "get": {
+        "operationId": "getProductBySlug",
+        "parameters": [
+          { "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "variant별 가용 재고를 포함한 상품 상세",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "slug", "name", "variants"],
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "slug": { "type": "string" },
+                    "name": { "type": "string" },
+                    "variants": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/ProductVariant" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/checkout/quote": {
+      "post": {
+        "operationId": "createCheckoutQuote",
+        "responses": {
+          "200": { "description": "서버 가격과 variant 가용 재고 검증 완료" },
+          "409": {
+            "description": "품절 또는 요청 수량 초과(INSUFFICIENT_STOCK)",
+            "$ref": "#/components/responses/Error"
+          },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
       }
     },
     "/wishlists/{userId}": {

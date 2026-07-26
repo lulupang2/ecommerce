@@ -36,13 +36,33 @@ export class OrderRepository {
     if (ids.length !== items.length) {
       throw Object.assign(new Error('VARIANT_REQUIRED'), { status: 400 });
     }
-    const response = await fetch(
-      `${process.env.CATALOG_URL || 'http://localhost:3002'}/internal/variants?ids=${ids.join(',')}`,
-      { headers: { 'x-internal-key': process.env.INTERNAL_API_KEY || 'techzone-internal' } },
-    );
+    if (new Set(ids).size !== ids.length) {
+      throw Object.assign(new Error('DUPLICATE_VARIANT'), { status: 400 });
+    }
+    const headers = { 'x-internal-key': process.env.INTERNAL_API_KEY || 'techzone-internal' };
+    const [response, inventoryResponse] = await Promise.all([
+      fetch(
+        `${process.env.CATALOG_URL || 'http://localhost:3002'}/internal/variants?ids=${ids.join(',')}`,
+        { headers },
+      ),
+      fetch(
+        `${process.env.INVENTORY_URL || 'http://localhost:3006'}/internal/inventory/availability?variantIds=${ids.join(',')}`,
+        { headers },
+      ),
+    ]);
     if (!response.ok) throw Object.assign(new Error('CATALOG_UNAVAILABLE'), { status: 503 });
-    const payload = await response.json() as any;
+    if (!inventoryResponse.ok) throw Object.assign(new Error('INVENTORY_UNAVAILABLE'), { status: 503 });
+    const [payload, inventoryPayload] = await Promise.all([
+      response.json() as Promise<any>,
+      inventoryResponse.json() as Promise<any>,
+    ]);
     const variants = payload.items || [];
+    const availability = new Map(
+      (inventoryPayload.items || []).map((item: any) => [
+        item.variant_id,
+        Number(item.available_qty),
+      ]),
+    );
     const lines = items.map(item => {
       const variant = variants.find((value: any) => value.variant_id === item.variantId);
       const quantity = Number(item.quantity);
@@ -51,6 +71,13 @@ export class OrderRepository {
       }
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
         throw Object.assign(new Error('INVALID_QUANTITY'), { status: 400 });
+      }
+      const availableQty = Number(availability.get(item.variantId) || 0);
+      if (quantity > availableQty) {
+        throw Object.assign(new Error('INSUFFICIENT_STOCK'), {
+          status: 409,
+          details: { variantId: item.variantId, requestedQty: quantity, availableQty },
+        });
       }
       return {
         productId: variant.product_id,
@@ -63,6 +90,7 @@ export class OrderRepository {
         price: Number(variant.sale_price),
         listPrice: Number(variant.list_price),
         quantity,
+        availableQty,
       };
     });
     const subtotal = lines.reduce((sum: number, line: any) => sum + line.price * line.quantity, 0);

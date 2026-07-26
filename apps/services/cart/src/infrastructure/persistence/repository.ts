@@ -19,6 +19,16 @@ export class CartRepository {
     return result.rows;
   }
 
+  async item(userId: string, variantId: string): Promise<any | null> {
+    const result = await this.db.query(
+      `SELECT user_id,product_id,variant_id,sku,name,brand,option_values,image,
+              unit_price price,quantity,updated_at
+       FROM cart_items WHERE user_id=$1 AND variant_id=$2`,
+      [userId, variantId],
+    );
+    return result.rows[0] || null;
+  }
+
   async upsert(userId: string, input: any): Promise<any> {
     const variantId = input.variantId || input.productId;
     await this.db.query(

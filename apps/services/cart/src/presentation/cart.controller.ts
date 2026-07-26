@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { OptionalAuthGuard } from '@techzone/auth-platform/nest-guards';
 import {
-  IsInt, IsNotEmpty, IsObject, IsOptional, IsString, IsUUID, Min,
+  IsInt, IsNotEmpty, IsObject, IsOptional, IsString, IsUUID, Max, Min,
 } from 'class-validator';
 import { CartApplicationService } from '../application/service';
 
@@ -17,11 +17,11 @@ class CartItemDto {
   @IsOptional() @IsObject() optionValues?: Record<string, string>;
   @IsOptional() @IsString() image?: string;
   @IsInt() @Min(0) price!: number;
-  @IsOptional() @IsInt() @Min(1) quantity?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(20) quantity?: number;
 }
 
 class CartQuantityDto {
-  @IsInt() quantity!: number;
+  @IsInt() @Min(0) @Max(20) quantity!: number;
 }
 
 @Controller('carts/:userId')

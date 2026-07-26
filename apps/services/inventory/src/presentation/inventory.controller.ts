@@ -104,6 +104,13 @@ export class InventoryController {
     return { items: await this.application.internalInventory() };
   }
 
+  @Get('internal/inventory/availability')
+  @UseGuards(InternalGuard)
+  async availability(@Query('variantIds') rawVariantIds = '') {
+    const variantIds = [...new Set(rawVariantIds.split(',').filter(Boolean))];
+    return { items: await this.application.availability(variantIds) };
+  }
+
   @Get('internal/warehouses')
   @UseGuards(InternalGuard)
   async internalWarehouses() {

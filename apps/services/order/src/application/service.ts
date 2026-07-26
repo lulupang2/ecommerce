@@ -58,7 +58,10 @@ export class OrderApplicationService implements OnModuleInit {
     } catch (error) {
       return {
         status: Number((error as any).status || 500),
-        body: { code: error instanceof Error ? error.message : 'QUOTE_FAILED' },
+        body: {
+          code: error instanceof Error ? error.message : 'QUOTE_FAILED',
+          ...((error as any).details ? { details: (error as any).details } : {}),
+        },
       };
     }
   }

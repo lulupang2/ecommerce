@@ -169,6 +169,9 @@
 - `POST|DELETE /wishlists/:userId/:productId`
 - 찜 목록 조회·변경은 로그인한 JWT subject와 `:userId`가 일치할 때만 허용합니다.
 - 회원별 찜 목록 응답은 `Cache-Control: private, no-store`로 제공하며 로그인 시 로컬 찜과 서버 찜을 합집합으로 병합합니다. 병합 성공 후 게스트용 로컬 목록을 비워 로그아웃 뒤 회원 데이터가 노출되지 않게 합니다.
+- 상품 상세의 각 variant는 중앙 출고 창고 기준 `availableQty`, `inStock`을 제공합니다. Inventory 조회 장애 시 두 값은 `null`이며, 고객 UI는 재고 확인 중 상태로 표시합니다.
+- 장바구니는 클라이언트가 보낸 상품명·가격을 신뢰하지 않고 Catalog의 variant 정보로 정규화합니다. 옵션별 가용 수량을 초과하면 `409 INSUFFICIENT_STOCK`을 반환합니다.
+- 결제 견적과 주문 생성은 Inventory의 같은 variant 가용 수량을 다시 검증합니다. 재고 서비스 장애 시 `503 INVENTORY_UNAVAILABLE`, 품절·수량 부족 시 `409 INSUFFICIENT_STOCK`을 반환합니다.
 
 ### 관리자
 

@@ -76,17 +76,29 @@ const cookieHeader = cookies.filter(Boolean).map(value => value.split(';')[0]).j
 assert.match(cookieHeader, /tz_access=/);
 assert.match(cookieHeader, /tz_csrf=/);
 const csrf = decodeURIComponent(cookieHeader.match(/tz_csrf=([^;]+)/)?.[1] || '');
+const securityCatalog = (await ok('/products?page=1&pageSize=1')).data;
+const securityProduct = securityCatalog.items[0];
+const securityDetail = (await ok(`/products/${securityProduct.id}`)).data;
+const securityVariant = securityDetail.variants.find(variant => variant.availableQty > 0);
+const csrfCartItem = {
+  productId: securityProduct.id,
+  variantId: securityVariant.id,
+  name: 'CSRF 테스트',
+  brand: 'TECHZONE',
+  price: 1000,
+  quantity: 1,
+};
 const missingCsrf = await raw(`/carts/${second.user.id}/items`, {
   method: 'POST',
   headers: { cookie: cookieHeader },
-  body: JSON.stringify({ productId: crypto.randomUUID(), name: 'CSRF 테스트', brand: 'TECHZONE', price: 1000, quantity: 1 }),
+  body: JSON.stringify(csrfCartItem),
 });
 assert.equal(missingCsrf.response.status, 403);
 assert.equal(missingCsrf.data.code, 'CSRF_INVALID');
 const acceptedCsrf = await raw(`/carts/${second.user.id}/items`, {
   method: 'POST',
   headers: { cookie: cookieHeader, 'x-csrf-token': csrf },
-  body: JSON.stringify({ productId: crypto.randomUUID(), name: 'CSRF 테스트', brand: 'TECHZONE', price: 1000, quantity: 1 }),
+  body: JSON.stringify(csrfCartItem),
 });
 assert.equal(acceptedCsrf.response.status, 201, '정상 CSRF 토큰은 허용해야 합니다.');
 

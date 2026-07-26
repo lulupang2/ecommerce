@@ -40,7 +40,11 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
   useEffect(() => {
     function initialize(data) {
         if (!initialProduct) setProduct(data);
-        setVariantId(data.variants?.[0]?.id || '');
+        setVariantId(
+          data.variants?.find(item => item.availableQty === null || item.availableQty > 0)?.id
+            || data.variants?.[0]?.id
+            || '',
+        );
         setImage(data.images?.[0]?.url || data.image);
         saveRecentlyViewed(data);
     }
@@ -62,9 +66,17 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
   }
 
   async function cart(buy = false) {
-    await add(product, variant, quantity);
-    setNotice('장바구니에 담았습니다.');
-    if (buy) location.href = '/checkout/';
+    try {
+      await add(product, variant, quantity);
+      setNotice('장바구니에 담았습니다.');
+      if (buy) location.href = '/checkout/';
+    } catch (error: any) {
+      setNotice(
+        error.message === 'INSUFFICIENT_STOCK'
+          ? '선택한 옵션의 재고가 부족합니다. 수량을 다시 확인해 주세요.'
+          : '장바구니에 담지 못했습니다.',
+      );
+    }
   }
 
   async function ask(event) {
@@ -118,6 +130,11 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
   const reviews = product.reviews || [];
   const questions = product.questions || [];
   const wish = wishlistIds.includes(product.id);
+  const availableQty = variant?.availableQty;
+  const soldOut = availableQty === 0;
+  const maxQuantity = availableQty === null || availableQty === undefined
+    ? 20
+    : Math.min(20, availableQty);
 
   return (
     <main className="mx-auto max-w-[1440px] px-4 py-8 pb-40 md:px-8 md:pb-8">
@@ -137,9 +154,25 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
           <p className="mt-5 leading-7 text-slate-600">{summary}</p>
 
           <PriceBox listPrice={listPrice} price={price} discount={discount} couponDiscount={couponDiscount} shipping={shipping} finalPrice={finalPrice} />
-          <VariantPicker product={product} variantId={variantId} setVariantId={setVariantId} />
+          <VariantPicker
+            product={product}
+            variantId={variantId}
+            setVariantId={value => {
+              setVariantId(value);
+              setQuantity(1);
+            }}
+          />
+          <p className={`mt-3 text-sm font-bold ${soldOut ? 'text-rose-600' : 'text-emerald-700'}`}>
+            {soldOut
+              ? '현재 선택한 옵션은 품절입니다.'
+              : availableQty === null || availableQty === undefined
+                ? '재고 확인 후 주문할 수 있습니다.'
+                : availableQty <= 5
+                  ? `재고 ${availableQty}개 남음`
+                  : '구매 가능한 옵션입니다.'}
+          </p>
           <TrustCards />
-          <PurchaseActions quantity={quantity} setQuantity={setQuantity} wish={wish} toggleWish={toggleWish} cart={cart} />
+          <PurchaseActions quantity={quantity} setQuantity={setQuantity} maxQuantity={maxQuantity} soldOut={soldOut} wish={wish} toggleWish={toggleWish} cart={cart} />
           {notice && <p className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-sm font-bold text-emerald-700"><Check size={16} />{notice}</p>}
         </div>
       </section>
@@ -180,8 +213,8 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
           >
             <Heart className={wish ? 'fill-current' : ''} size={20} />
           </button>
-          <button onClick={() => cart(false)} className="h-12 flex-1 rounded-xl border-2 border-slate-950 font-black text-slate-950">장바구니</button>
-          <button onClick={() => cart(true)} className="h-12 flex-1 rounded-xl bg-slate-950 font-black text-white">바로구매</button>
+          <button disabled={soldOut} onClick={() => cart(false)} className="h-12 flex-1 rounded-xl border-2 border-slate-950 font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">장바구니</button>
+          <button disabled={soldOut} onClick={() => cart(true)} className="h-12 flex-1 rounded-xl bg-slate-950 font-black text-white disabled:cursor-not-allowed disabled:opacity-40">{soldOut ? '품절' : '바로구매'}</button>
         </div>
       </div>
     </main>
@@ -243,9 +276,14 @@ function VariantPicker({ product, variantId, setVariantId }) {
       <b className="text-sm">옵션 선택</b>
       <div className="mt-3 grid gap-2">
         {(product.variants || []).map(item => (
-          <button key={item.id} onClick={() => setVariantId(item.id)} className={`flex items-center justify-between rounded-xl border p-4 text-left ${variantId === item.id ? 'border-cyan-500 bg-cyan-50 ring-1 ring-cyan-500' : 'border-slate-200'}`}>
+          <button
+            key={item.id}
+            disabled={item.availableQty === 0}
+            onClick={() => setVariantId(item.id)}
+            className={`flex items-center justify-between rounded-xl border p-4 text-left disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 ${variantId === item.id ? 'border-cyan-500 bg-cyan-50 ring-1 ring-cyan-500' : 'border-slate-200'}`}
+          >
             <span><b className="text-sm">{optionText(item.optionValues)}</b><small className="mt-1 block text-slate-600">{item.sku}</small></span>
-            <strong>{money(item.salePrice)}</strong>
+            <span className="text-right"><strong>{money(item.salePrice)}</strong><small className="mt-1 block">{item.availableQty === 0 ? '품절' : item.availableQty <= 5 ? `${item.availableQty}개 남음` : ''}</small></span>
           </button>
         ))}
       </div>
@@ -262,17 +300,17 @@ function TrustCards() {
   );
 }
 
-function PurchaseActions({ quantity, setQuantity, wish, toggleWish, cart }) {
+function PurchaseActions({ quantity, setQuantity, maxQuantity, soldOut, wish, toggleWish, cart }) {
   return (
     <div className="mt-6 hidden gap-3 md:flex">
       <div className="flex items-center rounded-xl border">
         <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="p-4"><Minus size={15} /></button>
         <b className="w-8 text-center">{quantity}</b>
-        <button onClick={() => setQuantity(Math.min(20, quantity + 1))} className="p-4"><Plus size={15} /></button>
+        <button disabled={quantity >= maxQuantity} onClick={() => setQuantity(Math.min(maxQuantity, quantity + 1))} className="p-4 disabled:opacity-30"><Plus size={15} /></button>
       </div>
       <button onClick={toggleWish} aria-label={wish ? '찜 해제' : '찜하기'} aria-pressed={wish} className={`grid w-14 place-items-center rounded-xl border ${wish ? 'border-rose-300 bg-rose-50 text-rose-500' : ''}`}><Heart className={wish ? 'fill-current' : ''} /></button>
-      <button onClick={() => cart(false)} className="flex-1 rounded-xl border-2 border-slate-950 font-black text-slate-950"><ShoppingBag className="mr-2 inline" size={17} />장바구니</button>
-      <button onClick={() => cart(true)} className="flex-1 rounded-xl bg-slate-950 font-black text-white">바로구매</button>
+      <button disabled={soldOut} onClick={() => cart(false)} className="flex-1 rounded-xl border-2 border-slate-950 font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"><ShoppingBag className="mr-2 inline" size={17} />장바구니</button>
+      <button disabled={soldOut} onClick={() => cart(true)} className="flex-1 rounded-xl bg-slate-950 font-black text-white disabled:cursor-not-allowed disabled:opacity-40">{soldOut ? '품절' : '바로구매'}</button>
     </div>
   );
 }

@@ -63,13 +63,35 @@ export class CatalogApplicationService implements OnModuleInit {
   async detail(field: 'id' | 'slug', value: string): Promise<any | null> {
     const result = await this.repository.detail(field, value);
     if (!result) return null;
-    const product = this.responseProduct(result.product);
+    const availability = await this.repository.variantAvailability(
+      result.variants.map((variant: any) => variant.id),
+    );
+    const variants = result.variants.map((variant: any) => {
+      const availableQty = availability.has(variant.id)
+        ? availability.get(variant.id)
+        : null;
+      return {
+        ...variant,
+        availableQty,
+        inStock: availableQty === null ? null : Number(availableQty) > 0,
+      };
+    });
+    const hasAvailability = variants.some((variant: any) => variant.availableQty !== null);
+    const product = {
+      ...this.responseProduct(result.product),
+      stock: hasAvailability
+        ? variants.reduce(
+            (sum: number, variant: any) => sum + Number(variant.availableQty || 0),
+            0,
+          )
+        : Number(result.product.stock),
+    };
     const average = result.reviews.length
       ? result.reviews.reduce((sum: number, item: any) => sum + item.rating, 0) / result.reviews.length
       : 0;
     return {
       ...product,
-      variants: result.variants,
+      variants,
       images: result.images,
       specs: result.specs,
       reviews: result.reviews,
