@@ -17,6 +17,12 @@ type ResourceConfig = {
   warehouse: boolean;
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function actorUuid(value: unknown): string | null {
+  return typeof value === 'string' && UUID_PATTERN.test(value) ? value : null;
+}
+
 const RESOURCES: Record<string, ResourceConfig> = {
   orders: {
     permission: 'orders.read',
@@ -376,7 +382,7 @@ export class AdminQueryRepository {
       `INSERT INTO admin_audit_logs(
         id,actor_id,action,entity_type,entity_id,reason,metadata,occurred_at
       ) VALUES($1,$2,$3,$4,$5,$6,$7,now())`,
-      [crypto.randomUUID(), payload.actorId || null, action,
+      [crypto.randomUUID(), actorUuid(payload.actorId), action,
         payload.entityType || action.split('.')[0],
         String(payload.entityId || payload.orderId || payload.productId
           || payload.shipmentId || payload.returnId || payload.purchaseOrderId

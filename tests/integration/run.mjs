@@ -182,6 +182,24 @@ for (let attempt = 0; attempt < 20; attempt += 1) {
   if (expiredPayment.status === 'refunded') break;
 }
 assert.equal(expiredPayment.status, 'refunded', 'expired reservation must refund approved payment');
+let systemRefundAudit;
+for (let attempt = 0; attempt < 20; attempt += 1) {
+  await new Promise(resolve => setTimeout(resolve, 250));
+  const refundAudits = await request(
+    '/admin/audit-logs?page=1&pageSize=100&search=payment.refunded',
+    { headers: adminHeaders },
+  );
+  systemRefundAudit = refundAudits.items.find(item =>
+    item.action === 'payment.refunded' && item.entity_id === raceWinner.id);
+  if (systemRefundAudit) break;
+}
+assert.ok(systemRefundAudit, 'automatic refund must create an admin audit log');
+assert.equal(systemRefundAudit.actor_id, null, 'system actor must not be stored in the UUID actor column');
+assert.equal(
+  systemRefundAudit.metadata.actorId,
+  'system',
+  'system actor identity must be preserved in audit metadata',
+);
 
 const search = await request('/search?q=orbit');
 assert.ok(search.items.some(item => item.name.toLowerCase().includes('orbit')));
