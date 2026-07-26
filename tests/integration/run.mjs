@@ -37,6 +37,7 @@ assert.ok(catalog.items.length >= 8, 'seed catalog must contain products');
 const product = catalog.items[0];
 const productDetail = await request(`/products/${product.id}`);
 assert.equal(productDetail.id, product.id, 'product detail must resolve by id');
+assert.ok(productDetail.variants.some(variant => variant.availableQty > 0), 'product variants must expose available inventory');
 const adminCatalog = await request('/products?status=all', { headers: adminHeaders });
 assert.ok(adminCatalog.items.length >= catalog.items.length, 'admin catalog must include products');
 const originalPrice = productDetail.price;
@@ -65,6 +66,25 @@ assert.equal(forbiddenMedia.status, 403, 'customer must not issue media upload U
 await request(`/carts/${account.user.id}/items`, { method: 'POST', headers: userHeaders, body: JSON.stringify({ productId: product.id, name: product.name, brand: product.brand, image: product.image, price: product.price, quantity: 1 }) });
 const cart = await request(`/carts/${account.user.id}`, { headers: userHeaders });
 assert.equal(cart.items.length, 1);
+assert.equal(cart.items[0].price, product.price, 'cart must store the canonical server price');
+assert.equal(cart.items[0].in_stock, true, 'cart must expose variant stock status');
+const tamperedCart = await request(`/carts/${account.user.id}/items`, {
+  method: 'POST',
+  headers: userHeaders,
+  body: JSON.stringify({
+    productId: product.id,
+    variantId: productDetail.variants.find(variant => variant.availableQty > 0).id,
+    name: '조작된 상품명',
+    brand: '조작된 브랜드',
+    image: product.image,
+    price: 1,
+    quantity: 1,
+  }),
+});
+assert.equal(tamperedCart.quantity, 1);
+const canonicalCart = await request(`/carts/${account.user.id}`, { headers: userHeaders });
+assert.equal(canonicalCart.items[0].name, product.name, 'cart must ignore client supplied product metadata');
+assert.equal(canonicalCart.items[0].price, product.price, 'cart must ignore client supplied price');
 const orderKey = crypto.randomUUID();
 const order = await request('/orders', { method: 'POST', headers: { ...userHeaders, 'idempotency-key': orderKey }, body: JSON.stringify({ userId: account.user.id, items: [{ productId: product.id, name: product.name, brand: product.brand, image: product.image, price: product.price, quantity: 1 }], shipping: { recipient: 'Integration Test', phone: '010-0000-0000', address: 'Seoul, Korea' } }) });
 const replayedOrder = await request('/orders', { method: 'POST', headers: { ...userHeaders, 'idempotency-key': orderKey }, body: JSON.stringify({ userId: account.user.id, items: [{ productId: product.id, name: product.name, brand: product.brand, image: product.image, price: product.price, quantity: 1 }], shipping: { recipient: 'Integration Test', phone: '010-0000-0000', address: 'Seoul, Korea' } }) });

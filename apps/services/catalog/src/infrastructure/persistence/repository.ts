@@ -369,10 +369,27 @@ export class CatalogRepository {
               v.sale_price,v.status,p.slug,p.name,p.brand,p.category,p.image,p.stock,
               p.status product_status
        FROM product_variants v JOIN products p ON p.id=v.product_id
-       WHERE v.id=ANY($1::uuid[])`,
+       WHERE v.id=ANY($1::uuid[]) OR v.product_id=ANY($1::uuid[])
+       ORDER BY v.sale_price`,
       [ids],
     );
     return result.rows;
+  }
+
+  async variantAvailability(ids: string[]): Promise<Map<string, number>> {
+    if (!ids.length) return new Map();
+    const response = await fetch(
+      `${process.env.INVENTORY_URL || 'http://localhost:3006'}/internal/inventory/availability?variantIds=${ids.join(',')}`,
+      { headers: { 'x-internal-key': process.env.INTERNAL_API_KEY || 'techzone-internal' } },
+    );
+    if (!response.ok) return new Map();
+    const payload = await response.json() as any;
+    return new Map(
+      (payload.items || []).map((item: any) => [
+        item.variant_id,
+        Number(item.available_qty),
+      ]),
+    );
   }
 
   async internalReviews(): Promise<any[]> {

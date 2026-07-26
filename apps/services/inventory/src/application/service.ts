@@ -32,6 +32,7 @@ export class InventoryApplicationService implements OnModuleInit {
   warehouses() { return this.repository.warehouses(); }
   stock(productId: string) { return this.repository.stock(productId); }
   internalInventory() { return this.repository.internalInventory(); }
+  availability(variantIds: string[]) { return this.repository.availability(variantIds); }
 
   async adjust(productId: string, input: any, actorId: string): Promise<IdempotentResult> {
     return {

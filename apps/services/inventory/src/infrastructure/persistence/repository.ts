@@ -38,7 +38,8 @@ export class InventoryRepository {
     await this.db.query(
       `INSERT INTO warehouses(id,code,name,type,address)
        VALUES($1,$2,$3,$4,$5)
-       ON CONFLICT(code) DO UPDATE SET name=EXCLUDED.name`,
+       ON CONFLICT(code) DO UPDATE SET
+         name=EXCLUDED.name,type=EXCLUDED.type,address=EXCLUDED.address`,
       [crypto.randomUUID(), code, name, type, address],
     );
     const result = await this.db.query(`SELECT id FROM warehouses WHERE code=$1`, [code]);
@@ -426,5 +427,27 @@ export class InventoryRepository {
        ORDER BY b.updated_at DESC`,
     );
     return result.rows;
+  }
+
+  async availability(variantIds: string[]): Promise<any[]> {
+    if (!variantIds.length) return [];
+    const result = await this.db.query(
+      `SELECT b.variant_id,
+              coalesce(sum(b.available_qty),0)::int available_qty
+       FROM inventory_balances b
+       JOIN warehouses w ON w.id=b.warehouse_id
+       WHERE b.variant_id=ANY($1::uuid[])
+         AND w.active=true
+         AND w.type IN ('central','fulfillment')
+       GROUP BY b.variant_id`,
+      [variantIds],
+    );
+    const quantities = new Map(
+      result.rows.map((row: any) => [row.variant_id, Number(row.available_qty)]),
+    );
+    return variantIds.map(variantId => ({
+      variant_id: variantId,
+      available_qty: quantities.get(variantId) || 0,
+    }));
   }
 }

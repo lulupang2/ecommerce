@@ -1,14 +1,27 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { expectNoAccessibilityViolations } from '../accessibility';
 
+async function gotoStorefront(page: Page, path: string) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 8_000 });
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await page.waitForTimeout(300);
+    }
+  }
+  throw lastError;
+}
+
 test('고객이 홈에서 상품을 탐색할 수 있다', async ({ page }) => {
-  await page.goto('/');
+  await gotoStorefront(page, '/');
 
   await expect(page).toHaveTitle(/TECHZONE/i);
   await expect(page.locator('main')).toBeVisible();
   await expect(page.locator('a[href^="/products/"]').first()).toBeVisible();
 
-  await page.goto('/shop/');
+  await gotoStorefront(page, '/shop/');
   await expect(page.locator('main')).toBeVisible();
   await expect(page.locator('a[href^="/products/"]').first()).toBeVisible();
   const mobileFilterButton = page.getByRole('button', { name: '필터', exact: true });
@@ -20,21 +33,21 @@ test('고객이 홈에서 상품을 탐색할 수 있다', async ({ page }) => {
 
 test('@a11y 고객 홈과 상품 목록이 WCAG 2.1 AA를 충족한다', async ({ page }) => {
   test.setTimeout(60_000);
-  await page.goto('/');
+  await gotoStorefront(page, '/');
   await expect(page.locator('a[href^="/products/"]').first()).toBeVisible();
   await expectNoAccessibilityViolations(page, '고객 홈');
 
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: '본문 바로가기' })).toBeFocused();
 
-  await page.goto('/shop/');
+  await gotoStorefront(page, '/shop/');
   await expect(page.locator('a[href^="/products/"]').first()).toBeVisible();
   await expectNoAccessibilityViolations(page, '상품 목록');
 });
 
 test('상품 상세가 검색 엔진용 메타데이터와 Product 구조화 데이터를 제공한다', async ({ page }) => {
   const slug = 'nova-book-air-14';
-  await page.goto(`/products/${slug}/`);
+  await gotoStorefront(page, `/products/${slug}/`);
 
   const productName = (await page.getByRole('heading', { level: 1 }).textContent())?.trim();
   expect(productName).toBeTruthy();
@@ -65,15 +78,15 @@ test('상품 상세가 검색 엔진용 메타데이터와 Product 구조화 데
 
 test('상품 상세에서 본 상품을 홈의 최근 본 상품에서 다시 찾을 수 있다', async ({ page }) => {
   const slug = 'nova-book-air-14';
-  await page.goto('/');
+  await gotoStorefront(page, '/');
   await page.evaluate(() => {
     localStorage.setItem('techzone-recent', 'invalid-json');
   });
-  await page.goto(`/products/${slug}/`);
+  await gotoStorefront(page, `/products/${slug}/`);
   const productName = (await page.getByRole('heading', { level: 1 }).textContent())?.trim();
   expect(productName).toBeTruthy();
 
-  await page.goto('/');
+  await gotoStorefront(page, '/');
 
   const recentSection = page.getByRole('region', { name: '최근 본 상품' });
   await expect(recentSection).toBeVisible();
@@ -89,7 +102,7 @@ test('로그인 회원의 찜 상품이 서버에 저장되어 마이페이지�
   const password = 'Wishlist1234!';
   const slug = 'nova-book-air-14';
 
-  await page.goto('/login/');
+  await gotoStorefront(page, '/login/');
   const registerButton = page.getByRole('button', { name: '회원가입' });
   const nameField = page.getByLabel('이름');
   await expect.poll(async () => {
@@ -102,7 +115,7 @@ test('로그인 회원의 찜 상품이 서버에 저장되어 마이페이지�
   await page.getByRole('button', { name: /계정 만들기/ }).click({ force: true });
   await expect(page.getByRole('status')).toContainText('로그인되었습니다.');
 
-  await page.goto(`/products/${slug}/`);
+  await gotoStorefront(page, `/products/${slug}/`);
   const productName = (await page.getByRole('heading', { level: 1 }).textContent())?.trim();
   expect(productName).toBeTruthy();
   const wishlistResponse = page.waitForResponse(response => (
@@ -116,16 +129,16 @@ test('로그인 회원의 찜 상품이 서버에 저장되어 마이페이지�
   await page.reload();
   await expect(page.getByRole('button', { name: '찜 해제' })).toBeVisible();
 
-  await page.goto('/mypage/');
+  await gotoStorefront(page, '/mypage/');
   const wishlistSection = page.locator('#wishlist-products');
   await expect(wishlistSection.getByRole('link', { name: productName, exact: true }).first()).toHaveAttribute(
     'href',
     `/products/${slug}/`,
   );
 
-  await page.goto('/login/');
+  await gotoStorefront(page, '/login/');
   await page.getByRole('button', { name: /로그아웃/ }).click({ force: true });
   await expect(page.getByRole('status')).toContainText('로그아웃되었습니다.');
-  await page.goto(`/products/${slug}/`);
+  await gotoStorefront(page, `/products/${slug}/`);
   await expect(page.getByRole('button', { name: '찜하기' })).toBeVisible();
 });

@@ -32,10 +32,40 @@ const product = filtered.items[0];
 const detail = await request(`/products/by-slug/${product.slug}`);
 assert.ok(detail.variants.length >= 2, '상품 상세에는 복수 variant가 있어야 합니다.');
 assert.ok(detail.images.length >= 2 && detail.specs.length >= 3, '상품 이미지와 스펙이 제공되어야 합니다.');
+assert.ok(
+  detail.variants.every(variant => Number.isInteger(variant.availableQty) && typeof variant.inStock === 'boolean'),
+  '상품 상세 variant에는 실제 가용 재고가 포함되어야 합니다.',
+);
+const availableVariant = detail.variants.find(variant => variant.availableQty > 0);
+const soldOutVariant = detail.variants.find(variant => variant.availableQty === 0);
+assert.ok(availableVariant, '구매 가능한 variant가 있어야 합니다.');
+assert.ok(soldOutVariant, '품절 variant가 구분되어야 합니다.');
+
+const soldOutCart = await fetch(`${base}/carts/${crypto.randomUUID()}/items`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    productId: detail.id,
+    variantId: soldOutVariant.id,
+    name: detail.name,
+    price: soldOutVariant.salePrice,
+    quantity: 1,
+  }),
+});
+assert.equal(soldOutCart.status, 409, '품절 variant를 장바구니에 추가할 수 없어야 합니다.');
+assert.equal((await soldOutCart.json()).code, 'INSUFFICIENT_STOCK');
+
+const soldOutQuote = await fetch(`${base}/checkout/quote`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ items: [{ variantId: soldOutVariant.id, quantity: 1 }] }),
+});
+assert.equal(soldOutQuote.status, 409, '품절 variant의 견적 생성을 차단해야 합니다.');
+assert.equal((await soldOutQuote.json()).code, 'INSUFFICIENT_STOCK');
 
 const quote = await request('/checkout/quote', {
   method: 'POST',
-  body: JSON.stringify({ items: [{ variantId: detail.variants[0].id, quantity: 1 }], couponCode: 'TECHZONE10' }),
+  body: JSON.stringify({ items: [{ variantId: availableVariant.id, quantity: 1 }], couponCode: 'TECHZONE10' }),
 });
 assert.equal(quote.discountAmount, Math.min(Math.floor(quote.subtotalAmount * 0.1), 50000));
 assert.equal(quote.shippingFee, quote.subtotalAmount >= 80000 ? 0 : 3000);

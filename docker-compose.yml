@@ -128,19 +128,19 @@ services:
   catalog:
     <<: *service
     command: node apps/services/catalog/dist/main.js
-    environment: { <<: *common-env, PORT: 3002, SERVICE_NAME: catalog, DATABASE_URL: "postgres://canvas:${POSTGRES_PASSWORD:-canvas}@postgres:5432/catalog", ORDER_URL: http://order:3004 }
+    environment: { <<: *common-env, PORT: 3002, SERVICE_NAME: catalog, DATABASE_URL: "postgres://canvas:${POSTGRES_PASSWORD:-canvas}@postgres:5432/catalog", ORDER_URL: http://order:3004, INVENTORY_URL: http://inventory:3006 }
     depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy } }
 
   cart:
     <<: *service
     command: node apps/services/cart/dist/main.js
-    environment: { <<: *common-env, PORT: 3003, SERVICE_NAME: cart, DATABASE_URL: "postgres://canvas:${POSTGRES_PASSWORD:-canvas}@postgres:5432/cart" }
+    environment: { <<: *common-env, PORT: 3003, SERVICE_NAME: cart, DATABASE_URL: "postgres://canvas:${POSTGRES_PASSWORD:-canvas}@postgres:5432/cart", CATALOG_URL: http://catalog:3002, INVENTORY_URL: http://inventory:3006 }
     depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy } }
 
   order:
     <<: *service
     command: node apps/services/order/dist/main.js
-    environment: { <<: *common-env, PORT: 3004, SERVICE_NAME: order, DATABASE_URL: "postgres://canvas:${POSTGRES_PASSWORD:-canvas}@postgres:5432/orders", CATALOG_URL: http://catalog:3002 }
+    environment: { <<: *common-env, PORT: 3004, SERVICE_NAME: order, DATABASE_URL: "postgres://canvas:${POSTGRES_PASSWORD:-canvas}@postgres:5432/orders", CATALOG_URL: http://catalog:3002, INVENTORY_URL: http://inventory:3006 }
     depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy } }
 
   payment:
