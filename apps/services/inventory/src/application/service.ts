@@ -60,6 +60,7 @@ export class InventoryApplicationService implements OnModuleInit, OnModuleDestro
   movements(variantId?: string) { return this.repository.movements(variantId); }
   serials() { return this.repository.serials(); }
   warehouses() { return this.repository.warehouses(); }
+  reservations(query: any) { return this.repository.reservations(query); }
   stock(productId: string) { return this.repository.stock(productId); }
   internalInventory() { return this.repository.internalInventory(); }
   availability(variantIds: string[]) { return this.repository.availability(variantIds); }

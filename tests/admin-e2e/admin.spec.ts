@@ -47,6 +47,31 @@ test('관리자 access token 만료 시 refresh token으로 세션을 복구한�
   expect(refreshedCookies.some(cookie => cookie.name === 'tz_access')).toBe(true);
 });
 
+test('관리자가 전체 서비스 상태와 재고 예약 원장을 조회할 수 있다', async ({ page }) => {
+  await page.goto('/admin/login/', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('button', { name: '로그인' })).toBeEnabled();
+  await page.getByLabel('이메일').fill(process.env.ADMIN_EMAIL || 'admin@techzone.local');
+  await page.getByLabel('비밀번호').fill(process.env.ADMIN_PASSWORD || 'TechzoneAdmin123!');
+  await page.getByRole('button', { name: '로그인' }).click();
+  await expect(page).toHaveURL(/\/admin\/?$/);
+
+  await page.getByRole('link', { name: '시스템 상태' }).click();
+  await expect(page.getByRole('heading', { name: '시스템 운영 상태' })).toBeVisible();
+  await expect(
+    page.locator('article').filter({ hasText: '플랫폼 상태' }).getByText('정상', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('API Gateway', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: '미발행 Outbox' })).toBeVisible();
+
+  await page.getByRole('link', { name: '재고 예약' }).click();
+  await expect(page).toHaveURL(/\/admin\/inventory\/reservations\/?/);
+  await expect(page.getByRole('heading', { name: '재고 예약 원장' })).toBeVisible();
+  await expect(page.locator('table tbody tr').first()).toBeVisible();
+  await page.getByLabel('상태', { exact: true }).selectOption('released');
+  await expect(page).toHaveURL(/status=released/);
+  await expect(page.locator('table tbody tr').first().getByText('예약 해제', { exact: true })).toBeVisible();
+});
+
 test('@a11y 관리자 로그인과 대시보드가 WCAG 2.1 AA를 충족한다', async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto('/admin/login/');

@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 
 const crypto = require('node:crypto') as typeof import('node:crypto');
 const { database } = require('@techzone/database/db') as { database(service: string): any };
-const { publish, registerReliability } = require('@techzone/messaging/bus') as {
+const { publish, registerReliability, reliabilitySnapshot } = require('@techzone/messaging/bus') as {
   publish(event: string, payload: Record<string, unknown>, options?: Record<string, unknown>): Promise<any>;
   registerReliability(service: string, database: any): Promise<void>;
+  reliabilitySnapshot(limit?: number): Promise<any>;
 };
 
 type ResourceConfig = {
@@ -128,11 +129,16 @@ export class AdminQueryRepository {
   readonly db = database('admin');
   private readonly internalKey = process.env.INTERNAL_API_KEY || 'techzone-internal';
   private readonly serviceUrls: Record<string, string> = {
+    gateway: process.env.GATEWAY_INTERNAL_URL || 'http://localhost:3000',
     auth: process.env.AUTH_URL || 'http://localhost:3001',
     catalog: process.env.CATALOG_URL || 'http://localhost:3002',
+    cart: process.env.CART_URL || 'http://localhost:3003',
     order: process.env.ORDER_URL || 'http://localhost:3004',
     payment: process.env.PAYMENT_URL || 'http://localhost:3005',
     inventory: process.env.INVENTORY_URL || 'http://localhost:3006',
+    notification: process.env.NOTIFICATION_URL || 'http://localhost:3007',
+    search: process.env.SEARCH_URL || 'http://localhost:3008',
+    media: process.env.MEDIA_URL || 'http://localhost:3009',
     fulfillment: process.env.FULFILLMENT_URL || 'http://localhost:3010',
     procurement: process.env.PROCUREMENT_URL || 'http://localhost:3011',
   };
@@ -798,26 +804,143 @@ export class AdminQueryRepository {
     return { id, status: 'discarded' };
   }
 
-  async systemStatus(): Promise<any> {
-    const [deadLetters, outbox, processed] = await Promise.all([
-      this.db.query(`SELECT count(*)::int count FROM admin_dead_letters WHERE status='pending'`),
-      this.db.query(
-        `SELECT count(*)::int count,
-                COALESCE(EXTRACT(EPOCH FROM (now()-min(occurred_at))),0)::int oldest_seconds
-         FROM outbox_events WHERE published_at IS NULL`,
-      ),
-      this.db.query(
-        `SELECT count(*)::int count FROM inbox_events
-         WHERE processed_at>now()-interval '24 hours'`,
-      ),
+  private async reliabilitySnapshots(limit = 50): Promise<any[]> {
+    const remoteEntries = Object.entries(this.serviceUrls);
+    const results = await Promise.allSettled([
+      reliabilitySnapshot(limit),
+      ...remoteEntries.map(async ([service, base]) => {
+        const response = await fetch(
+          `${base}/internal/operations/reliability?limit=${Math.min(100, Math.max(1, limit))}`,
+          {
+            headers: { 'x-internal-key': this.internalKey },
+            signal: AbortSignal.timeout(3_000),
+          },
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      }),
     ]);
+    return results.map((result, index) => {
+      if (result.status === 'fulfilled') return result.value;
+      const service = index === 0
+        ? 'admin-query'
+        : remoteEntries[index - 1]?.[0] || 'unknown';
+      return {
+        service,
+        status: 'unreachable',
+        pendingOutbox: 0,
+        oldestOutboxSeconds: 0,
+        pendingDeadLetters: 0,
+        processedEvents24h: 0,
+        outbox: [],
+        error: result.reason instanceof Error ? result.reason.message : 'SERVICE_UNREACHABLE',
+      };
+    });
+  }
+
+  async outbox(query: any): Promise<any> {
+    const page = Math.max(1, Number(query.page || 1));
+    const pageSize = Math.min(100, Math.max(10, Number(query.pageSize || 20)));
+    const snapshots = await this.reliabilitySnapshots(100);
+    let items = snapshots.flatMap(snapshot => snapshot.outbox || []);
+    if (query.service && query.service !== 'all') {
+      items = items.filter(item => item.service === query.service);
+    }
+    if (query.q) {
+      const q = String(query.q).toLocaleLowerCase();
+      items = items.filter(item => [
+        item.service, item.event_type, item.last_error, item.id,
+      ].some(value => String(value || '').toLocaleLowerCase().includes(q)));
+    }
+    const sortKeys: Record<string, string> = {
+      service: 'service',
+      event_type: 'event_type',
+      attempts: 'attempts',
+      occurred_at: 'occurred_at',
+    };
+    const sort = sortKeys[query.sort] || 'occurred_at';
+    const direction = query.direction === 'asc' ? 1 : -1;
+    items.sort((left, right) => {
+      const a = left[sort] ?? '';
+      const b = right[sort] ?? '';
+      return String(a).localeCompare(String(b), 'ko') * direction;
+    });
+    const total = items.length;
+    const offset = (page - 1) * pageSize;
     return {
-      service: 'admin-query',
-      status: Number(outbox.rows[0].oldest_seconds) > 300 ? 'degraded' : 'healthy',
-      pendingDeadLetters: deadLetters.rows[0].count,
-      pendingOutbox: outbox.rows[0].count,
-      oldestOutboxSeconds: outbox.rows[0].oldest_seconds,
-      processedEvents24h: processed.rows[0].count,
+      items: items.slice(offset, offset + pageSize),
+      page,
+      pageSize,
+      total,
+      pageCount: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  }
+
+  async reservations(query: any): Promise<any> {
+    const allowed = [
+      'page', 'pageSize', 'q', 'status', 'warehouseId',
+      'from', 'to', 'sort', 'direction',
+    ];
+    const params = new URLSearchParams();
+    for (const key of allowed) {
+      if (query[key] !== undefined && query[key] !== '') {
+        params.set(key, String(query[key]));
+      }
+    }
+    const result = await this.fetchInternal(
+      'inventory',
+      `/internal/inventory/reservations?${params}`,
+    );
+    const variantIds = [...new Set(
+      (result.items || []).map((item: any) => item.variant_id).filter(Boolean),
+    )] as string[];
+    if (!variantIds.length) return result;
+    const products = await this.db.query(
+      `SELECT variant_id,product_id,sku,name,brand
+       FROM admin_product_projection
+       WHERE variant_id=ANY($1::uuid[])`,
+      [variantIds],
+    );
+    const byVariant = new Map(
+      products.rows.map((product: any) => [product.variant_id, product]),
+    );
+    return {
+      ...result,
+      items: result.items.map((item: any) => ({
+        ...item,
+        ...(byVariant.get(item.variant_id) || {}),
+      })),
+    };
+  }
+
+  async systemStatus(): Promise<any> {
+    const [deadLetters, services] = await Promise.all([
+      this.db.query(`SELECT count(*)::int count FROM admin_dead_letters WHERE status='pending'`),
+      this.reliabilitySnapshots(25),
+    ]);
+    const pendingOutbox = services.reduce(
+      (sum, service) => sum + Number(service.pendingOutbox || 0),
+      0,
+    );
+    const oldestOutboxSeconds = Math.max(
+      0,
+      ...services.map(service => Number(service.oldestOutboxSeconds || 0)),
+    );
+    const processedEvents24h = services.reduce(
+      (sum, service) => sum + Number(service.processedEvents24h || 0),
+      0,
+    );
+    return {
+      service: 'techzone-platform',
+      status: services.some(service =>
+        service.status === 'degraded' || service.status === 'unreachable')
+        ? 'degraded'
+        : 'healthy',
+      pendingDeadLetters: Number(deadLetters.rows[0].count || 0),
+      pendingOutbox,
+      oldestOutboxSeconds,
+      processedEvents24h,
+      services,
       traceUrl: process.env.GRAFANA_URL || 'http://localhost:13000',
     };
   }

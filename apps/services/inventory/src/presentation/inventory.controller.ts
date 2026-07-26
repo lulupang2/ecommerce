@@ -132,4 +132,10 @@ export class InventoryController {
   async internalWarehouses() {
     return { items: await this.application.warehouses() };
   }
+
+  @Get('internal/inventory/reservations')
+  @UseGuards(InternalGuard)
+  reservations(@Query() query: any) {
+    return this.application.reservations(query);
+  }
 }

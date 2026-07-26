@@ -94,6 +94,14 @@ export class AdminQueryController {
   @UseGuards(AuthGuard, RoleGuard('admin'), PermissionGuard('admin.manage'))
   systemStatus() { return this.application.systemStatus(); }
 
+  @Get('admin/outbox')
+  @UseGuards(AuthGuard, RoleGuard('admin'), PermissionGuard('admin.manage'))
+  outbox(@Query() query: any) { return this.application.outbox(query); }
+
+  @Get('admin/reservations')
+  @UseGuards(AuthGuard, RoleGuard('admin'), PermissionGuard('inventory.read'))
+  reservations(@Query() query: any) { return this.application.reservations(query); }
+
   @Post('admin/rebuild')
   @UseGuards(AuthGuard, RoleGuard('admin'), PermissionGuard('admin.manage'))
   rebuild(@Body() body: ReasonDto, @Req() request: any) {

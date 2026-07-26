@@ -2,6 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 
 const { database } = require('@techzone/database/db') as { database(service: string): any };
+const { registerReliability } = require('@techzone/messaging/bus') as {
+  registerReliability(service: string, database: any): Promise<void>;
+};
 import { mediaAssets } from './schema';
 
 @Injectable()
@@ -9,7 +12,10 @@ export class MediaRepository {
   readonly owner = 'media';
   readonly db = database('media');
 
-  initialize(): Promise<void> { return this.db.wait(); }
+  async initialize(): Promise<void> {
+    await this.db.wait();
+    await registerReliability('media', this.db);
+  }
 
   async create(value: any): Promise<void> {
     await this.db.orm.insert(mediaAssets).values(value);

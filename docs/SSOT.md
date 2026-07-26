@@ -151,6 +151,7 @@
 - 예약은 `reserved → confirmed → committed` 상태로 전이합니다. 주문 확정 전 30분이 지나면 만료되고, 주문 취소 시에는 `released`로 전환하면서 가용 수량을 복원합니다.
 - 출고 시 `reserved_qty`를 차감하고 이미 예약 때 차감한 `available_qty`는 다시 차감하지 않습니다.
 - 입고, 예약, 해제, 조정, 이동은 모두 `inventory_movements` 원장으로 기록합니다.
+- 예약 원장은 Inventory가 소유하며 관리자는 `GET /admin/reservations`를 통해 주문, variant, 창고, 상태, 만료·해제 사유를 서버 페이지네이션으로 조회합니다.
 - 관리자 재고 조정은 `variantId + warehouseId`를 명시하며 상품 단위 호환 API도 실제 balance의 variant를 먼저 결정합니다.
 - SKU, 주문번호, 송장번호는 unique입니다.
 
@@ -191,6 +192,9 @@
 - `GET /admin/reviews`
 - `GET /admin/alerts`
 - `GET /admin/audit-logs`
+- `GET /admin/system-status`
+- `GET /admin/outbox`
+- `GET /admin/reservations`
 - `POST /admin/rebuild`
 - `GET /storefront/admin/sections`
 - `PATCH /storefront/admin/sections/:id`

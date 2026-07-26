@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@techzone/ui/button';
 import { saveSession } from '@techzone/api-client/session';
@@ -11,6 +11,9 @@ export default function AdminLoginPage() {
   const router = useRouter();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => { setHydrated(true); }, []);
 
   async function login(event) {
     event.preventDefault();
@@ -42,7 +45,7 @@ export default function AdminLoginPage() {
       <label className="grid gap-2 text-sm font-bold">이메일<input name="email" type="email" required className="rounded-xl border p-3 font-normal"/></label>
       <label className="grid gap-2 text-sm font-bold">비밀번호<input name="password" type="password" required className="rounded-xl border p-3 font-normal"/></label>
       {message && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{message}</p>}
-      <Button disabled={busy}>{busy ? '로그인 중…' : '로그인'}</Button>
+      <Button disabled={busy || !hydrated}>{busy ? '로그인 중…' : '로그인'}</Button>
     </form>
   </main>;
 }

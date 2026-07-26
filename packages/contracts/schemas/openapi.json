@@ -286,6 +286,55 @@
     },
     "/admin/dead-letters": {
       "get": { "operationId": "listDeadLetters", "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }], "responses": { "200": { "description": "DLQ 목록", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Page" } } } } } }
+    },
+    "/admin/system-status": {
+      "get": {
+        "operationId": "getSystemStatus",
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],
+        "responses": {
+          "200": { "description": "전체 서비스 신뢰성 상태와 이벤트 처리 지표" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/admin/outbox": {
+      "get": {
+        "operationId": "listPendingOutbox",
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "minimum": 10, "maximum": 100 } },
+          { "name": "q", "in": "query", "schema": { "type": "string" } },
+          { "name": "service", "in": "query", "schema": { "type": "string" } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["service", "event_type", "attempts", "occurred_at"] } },
+          { "name": "direction", "in": "query", "schema": { "type": "string", "enum": ["asc", "desc"] } }
+        ],
+        "responses": {
+          "200": { "description": "서비스별 미발행 Outbox 이벤트", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Page" } } } },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/admin/reservations": {
+      "get": {
+        "operationId": "listInventoryReservations",
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "minimum": 10, "maximum": 100 } },
+          { "name": "q", "in": "query", "schema": { "type": "string" } },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["reserved", "confirmed", "committed", "released"] } },
+          { "name": "warehouseId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "from", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "to", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["created_at", "updated_at", "expires_at", "quantity", "status"] } },
+          { "name": "direction", "in": "query", "schema": { "type": "string", "enum": ["asc", "desc"] } }
+        ],
+        "responses": {
+          "200": { "description": "주문별 재고 예약 수명주기 원장", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Page" } } } },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
     }
   }
 }

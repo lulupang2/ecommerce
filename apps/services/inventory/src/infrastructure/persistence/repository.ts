@@ -270,7 +270,9 @@ export class InventoryRepository {
     await this.db.query(
       `UPDATE inventory_reservations
        SET status='confirmed',expires_at=NULL,updated_at=now()
-       WHERE order_id=$1 AND status='reserved'`,
+       WHERE order_id=$1
+         AND status='reserved'
+         AND expires_at>now()`,
       [orderId],
     );
   }
@@ -528,6 +530,80 @@ export class InventoryRepository {
   async warehouses(): Promise<any[]> {
     const result = await this.db.query(`SELECT * FROM warehouses ORDER BY name`);
     return result.rows;
+  }
+
+  async reservations(query: any): Promise<any> {
+    const page = Math.max(1, Number(query.page || 1));
+    const pageSize = Math.min(100, Math.max(10, Number(query.pageSize || 20)));
+    const params: unknown[] = [];
+    const where: string[] = [];
+    const statuses = new Set(['reserved', 'confirmed', 'committed', 'released']);
+
+    if (query.q) {
+      params.push(`%${String(query.q).trim()}%`);
+      where.push(`(
+        r.order_id::text ILIKE $${params.length}
+        OR r.variant_id::text ILIKE $${params.length}
+        OR w.code ILIKE $${params.length}
+        OR w.name ILIKE $${params.length}
+      )`);
+    }
+    if (statuses.has(query.status)) {
+      params.push(query.status);
+      where.push(`r.status=$${params.length}`);
+    }
+    if (query.warehouseId) {
+      params.push(query.warehouseId);
+      where.push(`r.warehouse_id=$${params.length}::uuid`);
+    }
+    if (query.from) {
+      params.push(query.from);
+      where.push(`r.created_at >= $${params.length}::date`);
+    }
+    if (query.to) {
+      params.push(query.to);
+      where.push(`r.created_at < ($${params.length}::date + interval '1 day')`);
+    }
+
+    const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const sorts: Record<string, string> = {
+      created_at: 'r.created_at',
+      updated_at: 'r.updated_at',
+      expires_at: 'r.expires_at',
+      quantity: 'r.quantity',
+      status: 'r.status',
+    };
+    const sort = sorts[query.sort] || sorts.created_at;
+    const direction = query.direction === 'asc' ? 'ASC' : 'DESC';
+    const count = await this.db.query(
+      `SELECT count(*)::int total
+       FROM inventory_reservations r
+       JOIN warehouses w ON w.id=r.warehouse_id
+       ${clause}`,
+      params,
+    );
+    params.push(pageSize, (page - 1) * pageSize);
+    const rows = await this.db.query(
+      `SELECT r.id,r.order_id,r.warehouse_id,r.variant_id,r.quantity,r.status,
+              r.expires_at,r.released_at,r.release_reason,r.created_at,r.updated_at,
+              w.code warehouse_code,w.name warehouse_name,b.product_id
+       FROM inventory_reservations r
+       JOIN warehouses w ON w.id=r.warehouse_id
+       LEFT JOIN inventory_balances b
+         ON b.warehouse_id=r.warehouse_id AND b.variant_id=r.variant_id
+       ${clause}
+       ORDER BY ${sort} ${direction} NULLS LAST,r.id
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    const total = Number(count.rows[0]?.total || 0);
+    return {
+      items: rows.rows,
+      page,
+      pageSize,
+      total,
+      pageCount: Math.max(1, Math.ceil(total / pageSize)),
+    };
   }
 
   async stock(productId: string): Promise<any> {

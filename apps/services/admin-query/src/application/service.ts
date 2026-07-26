@@ -61,6 +61,8 @@ export class AdminQueryApplicationService implements OnModuleInit {
   discardDeadLetter(id: string, actorId: string, reason?: string) {
     return this.repository.discardDeadLetter(id, actorId, reason);
   }
+  outbox(query: any) { return this.repository.outbox(query); }
+  reservations(query: any) { return this.repository.reservations(query); }
   systemStatus() { return this.repository.systemStatus(); }
 
   async rebuild(actorId: string, reason?: string): Promise<any> {

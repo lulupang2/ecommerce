@@ -198,7 +198,7 @@ services:
   admin:
     <<: *service
     command: node apps/services/admin-query/dist/main.js
-    environment: { <<: *common-env, PORT: 3012, SERVICE_NAME: admin, DATABASE_URL: "postgres://canvas:${POSTGRES_PASSWORD:-canvas}@postgres:5432/admin", CATALOG_URL: http://catalog:3002, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, FULFILLMENT_URL: http://fulfillment:3010, PROCUREMENT_URL: http://procurement:3011 }
+    environment: { <<: *common-env, PORT: 3012, SERVICE_NAME: admin, DATABASE_URL: "postgres://canvas:${POSTGRES_PASSWORD:-canvas}@postgres:5432/admin", GATEWAY_INTERNAL_URL: http://gateway:8080, CATALOG_URL: http://catalog:3002, CART_URL: http://cart:3003, ORDER_URL: http://order:3004, PAYMENT_URL: http://payment:3005, INVENTORY_URL: http://inventory:3006, NOTIFICATION_URL: http://notification:3007, SEARCH_URL: http://search:3008, MEDIA_URL: http://media:3009, FULFILLMENT_URL: http://fulfillment:3010, PROCUREMENT_URL: http://procurement:3011 }
     depends_on: { seed: { condition: service_completed_successfully }, rabbitmq: { condition: service_healthy }, redis: { condition: service_healthy }, auth: { condition: service_healthy }, catalog: { condition: service_healthy }, order: { condition: service_healthy }, payment: { condition: service_healthy }, inventory: { condition: service_healthy }, fulfillment: { condition: service_healthy }, procurement: { condition: service_healthy } }
 
   gateway:

@@ -1,13 +1,19 @@
 import { Injectable } from '@nestjs/common';
 
 const { database } = require('@techzone/database/db') as { database(service: string): any };
+const { registerReliability } = require('@techzone/messaging/bus') as {
+  registerReliability(service: string, database: any): Promise<void>;
+};
 
 @Injectable()
 export class CartRepository {
   readonly owner = 'cart';
   readonly db = database('cart');
 
-  initialize(): Promise<void> { return this.db.wait(); }
+  async initialize(): Promise<void> {
+    await this.db.wait();
+    await registerReliability('cart', this.db);
+  }
 
   async list(userId: string): Promise<any[]> {
     const result = await this.db.query(

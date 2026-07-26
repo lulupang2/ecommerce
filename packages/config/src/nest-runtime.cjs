@@ -1,4 +1,4 @@
-const { Controller, Get, Module, Res, ValidationPipe } = require('@nestjs/common');
+const { Controller, Get, Module, Req, Res, ValidationPipe } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { SwaggerModule, DocumentBuilder } = require('@nestjs/swagger');
 const cookieParser = require('cookie-parser');
@@ -26,6 +26,13 @@ function createPlatformModule(service, readiness) {
       response.setHeader('content-type', client.register.contentType);
       return response.send(await client.register.metrics());
     }
+    async reliability(request, response) {
+      if (request.headers['x-internal-key'] !== (process.env.INTERNAL_API_KEY || 'techzone-internal')) {
+        return response.status(403).json({ code: 'INTERNAL_ACCESS_REQUIRED' });
+      }
+      const { reliabilitySnapshot } = require('@techzone/messaging/bus');
+      return response.json(await reliabilitySnapshot(request.query.limit));
+    }
   }
   Controller()(PlatformController);
   Get('/health')(PlatformController.prototype, 'live', Object.getOwnPropertyDescriptor(PlatformController.prototype, 'live'));
@@ -34,6 +41,9 @@ function createPlatformModule(service, readiness) {
   Res()(PlatformController.prototype, 'ready', 0);
   Get('/metrics')(PlatformController.prototype, 'metrics', Object.getOwnPropertyDescriptor(PlatformController.prototype, 'metrics'));
   Res()(PlatformController.prototype, 'metrics', 0);
+  Get('/internal/operations/reliability')(PlatformController.prototype, 'reliability', Object.getOwnPropertyDescriptor(PlatformController.prototype, 'reliability'));
+  Req()(PlatformController.prototype, 'reliability', 0);
+  Res()(PlatformController.prototype, 'reliability', 1);
 
   class ApplicationService {}
   class DomainRepository {}

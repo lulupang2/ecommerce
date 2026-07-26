@@ -287,4 +287,59 @@ async function messagingReadiness() {
   return { rabbitmq: channel ? 'ok' : 'unavailable' };
 }
 
-module.exports = { publish, subscribe, registerReliability, flushOutbox, close, envelope, messagingReadiness };
+async function reliabilitySnapshot(requestedLimit = 50) {
+  if (!reliability?.db) {
+    return {
+      service: process.env.SERVICE_NAME || 'unknown',
+      status: 'not_configured',
+      pendingOutbox: 0,
+      oldestOutboxSeconds: 0,
+      pendingDeadLetters: 0,
+      processedEvents24h: 0,
+      outbox: [],
+    };
+  }
+  const limit = Math.min(100, Math.max(1, Number(requestedLimit) || 50));
+  const [outboxSummary, outboxItems, deadLetters, processed] = await Promise.all([
+    reliability.db.query(
+      `SELECT count(*)::int count,
+              COALESCE(EXTRACT(EPOCH FROM (now()-min(occurred_at))),0)::int oldest_seconds
+       FROM outbox_events WHERE published_at IS NULL`,
+    ),
+    reliability.db.query(
+      `SELECT id,event_type,occurred_at,attempts,last_error
+       FROM outbox_events WHERE published_at IS NULL
+       ORDER BY occurred_at LIMIT $1`,
+      [limit],
+    ),
+    reliability.db.query(
+      `SELECT count(*)::int count FROM dead_letters WHERE status='pending'`,
+    ),
+    reliability.db.query(
+      `SELECT count(*)::int count FROM inbox_events
+       WHERE processed_at>now()-interval '24 hours'`,
+    ),
+  ]);
+  const oldestOutboxSeconds = Number(outboxSummary.rows[0].oldest_seconds || 0);
+  const pendingDeadLetters = Number(deadLetters.rows[0].count || 0);
+  return {
+    service: reliability.service,
+    status: oldestOutboxSeconds > 300 || pendingDeadLetters > 0 ? 'degraded' : 'healthy',
+    pendingOutbox: Number(outboxSummary.rows[0].count || 0),
+    oldestOutboxSeconds,
+    pendingDeadLetters,
+    processedEvents24h: Number(processed.rows[0].count || 0),
+    outbox: outboxItems.rows.map(item => ({ ...item, service: reliability.service })),
+  };
+}
+
+module.exports = {
+  publish,
+  subscribe,
+  registerReliability,
+  flushOutbox,
+  close,
+  envelope,
+  messagingReadiness,
+  reliabilitySnapshot,
+};
