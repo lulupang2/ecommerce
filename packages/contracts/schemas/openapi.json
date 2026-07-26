@@ -217,6 +217,70 @@
         "responses": { "201": { "description": "주문 생성" }, "409": { "$ref": "#/components/responses/Error" } }
       }
     },
+    "/payments/confirm": {
+      "post": {
+        "operationId": "confirmPayment",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["orderId", "amount"],
+                "properties": {
+                  "orderId": { "type": "string", "format": "uuid" },
+                  "amount": { "type": "integer", "minimum": 0 },
+                  "paymentKey": { "type": "string" },
+                  "provider": { "type": "string", "enum": ["card", "kakaopay", "naverpay", "bank"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Order 원본 금액과 상품을 검증한 결제 승인" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": {
+            "description": "주문 합계 불일치(PAYMENT_AMOUNT_MISMATCH) 또는 결제 불가 상태(ORDER_NOT_PAYABLE)",
+            "$ref": "#/components/responses/Error"
+          },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/inventory/variants/{variantId}": {
+      "patch": {
+        "operationId": "adjustVariantInventory",
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],
+        "parameters": [
+          { "name": "variantId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CsrfToken" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["availableQty", "warehouseId", "reason"],
+                "properties": {
+                  "availableQty": { "type": "integer", "minimum": 0 },
+                  "warehouseId": { "type": "string", "format": "uuid" },
+                  "reason": { "type": "string", "maxLength": 500 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "variant·창고 단위 재고 조정" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/admin/dashboard": {
       "get": { "operationId": "getAdminDashboard", "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }], "responses": { "200": { "description": "운영 KPI" }, "403": { "$ref": "#/components/responses/Error" } } }
     },

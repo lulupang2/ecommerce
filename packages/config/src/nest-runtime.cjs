@@ -98,7 +98,12 @@ function configureHttp(app, service) {
 async function bootstrapNest({ module: featureModule, service, port, readiness, docsPath = '/docs' }) {
   await startTelemetry(service);
   if (!featureModule) throw new Error(`Nest feature module is required for ${service}`);
-  const rootModule = createRootModule(featureModule, service, readiness);
+  let shuttingDown = false;
+  const guardedReadiness = async () => {
+    if (shuttingDown) throw new Error('Service is shutting down');
+    return readiness ? readiness() : { runtime: 'ok' };
+  };
+  const rootModule = createRootModule(featureModule, service, guardedReadiness);
   const app = await NestFactory.create(rootModule, {
     logger: false,
   });
@@ -110,6 +115,7 @@ async function bootstrapNest({ module: featureModule, service, port, readiness, 
   SwaggerModule.setup(docsPath, app, SwaggerModule.createDocument(app, config));
   await app.listen(port, '0.0.0.0');
   const shutdown = async signal => {
+    shuttingDown = true;
     console.log(JSON.stringify({ level: 'info', service, message: 'shutdown.started', signal }));
     const { close } = require('@techzone/messaging/bus');
     const { closeDatabases } = require('@techzone/database/db');

@@ -38,7 +38,10 @@ const releaseScript = await fs.readFile(
   path.join(root, 'tools', 'deployment', 'remote-release.sh'),
   'utf8',
 );
-const shell = spawnSync('bash', ['-n'], {
+const shellExecutable = process.platform === 'win32'
+  ? path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'bin', 'bash.exe')
+  : 'bash';
+const shell = spawnSync(shellExecutable, ['-n'], {
   cwd: root,
   encoding: 'utf8',
   input: releaseScript.replace(/\r\n/g, '\n'),

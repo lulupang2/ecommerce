@@ -5,7 +5,15 @@ const crypto = require('node:crypto') as typeof import('node:crypto');
 const { database } = require('@techzone/database/db') as { database(service: string): any };
 import { stock } from './schema';
 const { publish, registerReliability } = require('@techzone/messaging/bus') as {
-  publish(event: string, payload: Record<string, unknown>): Promise<void>;
+  publish(
+    event: string,
+    payload: Record<string, unknown>,
+    metadata?: {
+      client?: { query: (...args: any[]) => Promise<any> };
+      causationId?: string;
+      correlationId?: string;
+    },
+  ): Promise<void>;
   registerReliability(service: string, database: any): Promise<void>;
 };
 
@@ -106,70 +114,321 @@ export class InventoryRepository {
 
   async reserve(event: any): Promise<void> {
     const payload = event.payload;
-    const completed: any[] = [];
+    const client = await this.db.pool.connect();
     try {
+      await client.query('BEGIN');
+      const existing = await client.query(
+        `SELECT variant_id,warehouse_id,quantity,status
+         FROM inventory_reservations
+         WHERE order_id=$1
+         FOR UPDATE`,
+        [payload.orderId],
+      );
+      if (existing.rowCount) {
+        const active = existing.rows.filter((row: any) =>
+          ['reserved', 'confirmed', 'committed'].includes(row.status));
+        const requested = new Map<string, number>(
+          payload.items.map((item: any) => [
+            item.variantId || item.productId,
+            Number(item.quantity),
+          ]),
+        );
+        const allocated = new Map<string, number>();
+        for (const row of active) {
+          allocated.set(
+            row.variant_id,
+            (allocated.get(row.variant_id) || 0) + Number(row.quantity),
+          );
+        }
+        const matches = active.length > 0
+          && requested.size === allocated.size
+          && [...requested].every(([variantId, quantity]) =>
+            allocated.get(variantId) === quantity);
+        if (!matches) throw new Error('RESERVATION_CONFLICT');
+        await publish(
+          'inventory.reserved',
+          {
+            ...payload,
+            warehouseIds: [...new Set(active.map((row: any) => row.warehouse_id))],
+            replayed: true,
+          },
+          {
+            client,
+            causationId: event.id,
+            correlationId: event.correlationId,
+          },
+        );
+        await client.query('COMMIT');
+        return;
+      }
+
       for (const item of payload.items) {
         const variantId = item.variantId || item.productId;
-        const balance = await this.db.query(
-          `UPDATE inventory_balances
-           SET available_qty=available_qty-$1,reserved_qty=reserved_qty+$1,
-               version=version+1,updated_at=now()
-           WHERE warehouse_id=$2 AND (variant_id=$3 OR product_id=$4) AND available_qty >= $1
-           RETURNING id,variant_id,product_id`,
-          [Number(item.quantity), this.centralWarehouseId, variantId, item.productId],
+        const quantity = Number(item.quantity);
+        if (!variantId || !Number.isInteger(quantity) || quantity < 1) {
+          throw new Error('INVALID_RESERVATION_ITEM');
+        }
+        const balances = await client.query(
+          `SELECT b.id,b.warehouse_id,b.variant_id,b.product_id,b.available_qty
+           FROM inventory_balances b
+           JOIN warehouses w ON w.id=b.warehouse_id
+           WHERE b.variant_id=$1
+             AND b.available_qty>0
+             AND w.active=true
+             AND w.type IN ('central','fulfillment')
+           ORDER BY (b.warehouse_id=$2) DESC,b.available_qty DESC,b.id
+           FOR UPDATE OF b`,
+          [variantId, this.centralWarehouseId],
         );
-        if (!balance.rows[0]) throw new Error('OUT_OF_STOCK');
-        completed.push({ ...balance.rows[0], quantity: Number(item.quantity) });
-        await this.db.query(
-          `INSERT INTO inventory_reservations(
-            id,order_id,warehouse_id,variant_id,quantity,status,expires_at
-          ) VALUES($1,$2,$3,$4,$5,'reserved',now()+interval '30 minutes')
-           ON CONFLICT(order_id,variant_id) DO NOTHING`,
-          [
-            crypto.randomUUID(),
-            payload.orderId,
-            this.centralWarehouseId,
-            balance.rows[0].variant_id,
-            Number(item.quantity),
-          ],
+        const totalAvailable = balances.rows.reduce(
+          (sum: number, row: any) => sum + Number(row.available_qty),
+          0,
         );
-        await this.db.query(
-          `INSERT INTO inventory_movements(
-            id,warehouse_id,product_id,variant_id,type,quantity,reason,reference_type,reference_id
-          ) VALUES($1,$2,$3,$4,'reservation',$5,'주문 재고 예약','order',$6)`,
-          [
-            crypto.randomUUID(),
-            this.centralWarehouseId,
-            item.productId,
-            balance.rows[0].variant_id,
-            -Number(item.quantity),
-            payload.orderId,
-          ],
+        if (totalAvailable < quantity) throw new Error('OUT_OF_STOCK');
+
+        let remaining = quantity;
+        for (const balance of balances.rows) {
+          if (remaining === 0) break;
+          const allocated = Math.min(remaining, Number(balance.available_qty));
+          await client.query(
+            `UPDATE inventory_balances
+             SET available_qty=available_qty-$1,reserved_qty=reserved_qty+$1,
+                 version=version+1,updated_at=now()
+             WHERE id=$2`,
+            [allocated, balance.id],
+          );
+          await client.query(
+            `INSERT INTO inventory_reservations(
+              id,order_id,warehouse_id,variant_id,quantity,status,expires_at
+            ) VALUES($1,$2,$3,$4,$5,'reserved',now()+interval '30 minutes')`,
+            [
+              crypto.randomUUID(),
+              payload.orderId,
+              balance.warehouse_id,
+              variantId,
+              allocated,
+            ],
+          );
+          await client.query(
+            `INSERT INTO inventory_movements(
+              id,warehouse_id,product_id,variant_id,type,quantity,reason,reference_type,reference_id
+            ) VALUES($1,$2,$3,$4,'reservation',$5,'주문 재고 예약','order',$6)`,
+            [
+              crypto.randomUUID(),
+              balance.warehouse_id,
+              balance.product_id || item.productId,
+              variantId,
+              -allocated,
+              payload.orderId,
+            ],
+          );
+          remaining -= allocated;
+        }
+        await client.query(
+          `UPDATE stock
+           SET available_qty=GREATEST(available_qty-$2,0),version=version+1
+           WHERE product_id=$1`,
+          [item.productId, quantity],
         );
-        await this.db.orm
-          .update(stock)
-          .set({
-            availableQty: sql`GREATEST(${stock.availableQty} - ${Number(item.quantity)},0)`,
-            version: sql`${stock.version} + 1`,
-          })
-          .where(eq(stock.productId, item.productId));
       }
-      await publish('inventory.reserved', { ...payload, warehouseId: this.centralWarehouseId });
+      const reservations = await client.query(
+        `SELECT DISTINCT warehouse_id
+         FROM inventory_reservations
+         WHERE order_id=$1 AND status='reserved'`,
+        [payload.orderId],
+      );
+      await publish(
+        'inventory.reserved',
+        {
+          ...payload,
+          warehouseId: reservations.rows[0]?.warehouse_id || this.centralWarehouseId,
+          warehouseIds: reservations.rows.map((row: any) => row.warehouse_id),
+        },
+        {
+          client,
+          causationId: event.id,
+          correlationId: event.correlationId,
+        },
+      );
+      await client.query('COMMIT');
     } catch (error) {
-      for (const item of completed) {
-        await this.db.query(
-          `UPDATE inventory_balances
-           SET available_qty=available_qty+$1,reserved_qty=GREATEST(reserved_qty-$1,0),
-               version=version+1 WHERE id=$2`,
-          [item.quantity, item.id],
-        );
-      }
+      await client.query('ROLLBACK');
       await publish('inventory.failed', {
         orderId: payload.orderId,
         userId: payload.userId,
         reason: error instanceof Error ? error.message : 'INVENTORY_FAILED',
+      }, {
+        causationId: event.id,
+        correlationId: event.correlationId,
       });
+    } finally {
+      client.release();
     }
+  }
+
+  async confirmReservations(orderId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE inventory_reservations
+       SET status='confirmed',expires_at=NULL,updated_at=now()
+       WHERE order_id=$1 AND status='reserved'`,
+      [orderId],
+    );
+  }
+
+  async commitReservations(orderId: string): Promise<void> {
+    const client = await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const reservations = await client.query(
+        `SELECT r.id,r.warehouse_id,r.variant_id,r.quantity
+         FROM inventory_reservations r
+         WHERE r.order_id=$1 AND r.status IN ('reserved','confirmed')
+         FOR UPDATE`,
+        [orderId],
+      );
+      for (const reservation of reservations.rows) {
+        const updated = await client.query(
+          `UPDATE inventory_balances
+           SET reserved_qty=reserved_qty-$1,version=version+1,updated_at=now()
+           WHERE warehouse_id=$2 AND variant_id=$3 AND reserved_qty >= $1
+           RETURNING id`,
+          [
+            Number(reservation.quantity),
+            reservation.warehouse_id,
+            reservation.variant_id,
+          ],
+        );
+        if (!updated.rowCount) throw new Error('RESERVED_STOCK_MISMATCH');
+      }
+      await client.query(
+        `UPDATE inventory_reservations
+         SET status='committed',expires_at=NULL,updated_at=now()
+         WHERE order_id=$1 AND status IN ('reserved','confirmed')`,
+        [orderId],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async releaseReservations(
+    orderId: string,
+    reason: string,
+    event?: any,
+  ): Promise<boolean> {
+    const client = await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const reservations = await client.query(
+        `SELECT r.id,r.warehouse_id,r.variant_id,r.quantity,b.product_id
+         FROM inventory_reservations r
+         JOIN inventory_balances b
+           ON b.warehouse_id=r.warehouse_id AND b.variant_id=r.variant_id
+         WHERE r.order_id=$1 AND r.status IN ('reserved','confirmed')
+         FOR UPDATE OF r,b`,
+        [orderId],
+      );
+      if (!reservations.rowCount) {
+        await client.query('COMMIT');
+        return false;
+      }
+      const productTotals = new Map<string, number>();
+      for (const reservation of reservations.rows) {
+        const quantity = Number(reservation.quantity);
+        const updated = await client.query(
+          `UPDATE inventory_balances
+           SET available_qty=available_qty+$1,reserved_qty=reserved_qty-$1,
+               version=version+1,updated_at=now()
+           WHERE warehouse_id=$2 AND variant_id=$3 AND reserved_qty >= $1
+           RETURNING id`,
+          [quantity, reservation.warehouse_id, reservation.variant_id],
+        );
+        if (!updated.rowCount) throw new Error('RESERVED_STOCK_MISMATCH');
+        await client.query(
+          `INSERT INTO inventory_movements(
+            id,warehouse_id,product_id,variant_id,type,quantity,reason,reference_type,reference_id
+          ) VALUES($1,$2,$3,$4,'release',$5,$6,'order',$7)`,
+          [
+            crypto.randomUUID(),
+            reservation.warehouse_id,
+            reservation.product_id,
+            reservation.variant_id,
+            quantity,
+            reason,
+            orderId,
+          ],
+        );
+        if (reservation.product_id) {
+          productTotals.set(
+            reservation.product_id,
+            (productTotals.get(reservation.product_id) || 0) + quantity,
+          );
+        }
+      }
+      for (const [productId, quantity] of productTotals) {
+        await client.query(
+          `UPDATE stock
+           SET available_qty=available_qty+$2,version=version+1
+           WHERE product_id=$1`,
+          [productId, quantity],
+        );
+      }
+      await client.query(
+        `UPDATE inventory_reservations
+         SET status='released',expires_at=NULL,released_at=now(),
+             release_reason=$2,updated_at=now()
+         WHERE order_id=$1 AND status IN ('reserved','confirmed')`,
+        [orderId, reason],
+      );
+      await publish(
+        'inventory.released',
+        { orderId, reason },
+        {
+          client,
+          causationId: event?.id,
+          correlationId: event?.correlationId,
+        },
+      );
+      if (reason === 'RESERVATION_EXPIRED') {
+        await publish(
+          'inventory.reservation_expired',
+          { orderId, reason },
+          {
+            client,
+            causationId: event?.id,
+            correlationId: event?.correlationId,
+          },
+        );
+      }
+      await client.query('COMMIT');
+      return true;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async expireReservations(): Promise<number> {
+    const expired = await this.db.query(
+      `SELECT DISTINCT order_id
+       FROM inventory_reservations
+       WHERE status='reserved' AND expires_at<=now()
+       ORDER BY order_id
+       LIMIT 100`,
+    );
+    let released = 0;
+    for (const row of expired.rows) {
+      if (await this.releaseReservations(row.order_id, 'RESERVATION_EXPIRED')) {
+        released += 1;
+      }
+    }
+    return released;
   }
 
   async receive(payload: any): Promise<void> {
@@ -284,36 +543,53 @@ export class InventoryRepository {
   }
 
   async adjust(productId: string, input: any, actorId: string): Promise<any> {
-    const quantity = Number(input.availableQty);
     const warehouseId = input.warehouseId || this.centralWarehouseId;
     const current = await this.db.query(
-      `SELECT * FROM inventory_balances WHERE product_id=$1 AND warehouse_id=$2 LIMIT 1`,
+      `SELECT * FROM inventory_balances
+       WHERE product_id=$1 AND warehouse_id=$2
+       ORDER BY updated_at DESC,id
+       LIMIT 1`,
       [productId, warehouseId],
     );
-    const before = Number(current.rows[0]?.available_qty || 0);
-    const variantId = current.rows[0]?.variant_id || productId;
+    const variantId = current.rows[0]?.variant_id;
+    if (!variantId) throw new Error('INVENTORY_BALANCE_NOT_FOUND');
+    return this.adjustVariant(variantId, input, actorId);
+  }
+
+  async adjustVariant(variantId: string, input: any, actorId: string): Promise<any> {
+    const quantity = Number(input.availableQty);
+    const warehouseId = input.warehouseId || this.centralWarehouseId;
+    let productId = '';
+    let reservedQty = 0;
     const client = await this.db.pool.connect();
     try {
       await client.query('BEGIN');
-      if (current.rows[0]) {
-        await client.query(
-          `UPDATE inventory_balances
-           SET available_qty=$1,version=version+1,updated_at=now() WHERE id=$2`,
-          [quantity, current.rows[0].id],
-        );
-      } else {
-        await client.query(
-          `INSERT INTO inventory_balances(
-            id,warehouse_id,product_id,variant_id,available_qty
-          ) VALUES($1,$2,$3,$3,$4)`,
-          [crypto.randomUUID(), warehouseId, productId, quantity],
-        );
-      }
+      const current = await client.query(
+        `SELECT * FROM inventory_balances
+         WHERE variant_id=$1 AND warehouse_id=$2
+         FOR UPDATE`,
+        [variantId, warehouseId],
+      );
+      if (!current.rows[0]) throw new Error('INVENTORY_BALANCE_NOT_FOUND');
+      productId = current.rows[0].product_id;
+      reservedQty = Number(current.rows[0].reserved_qty || 0);
+      const before = Number(current.rows[0].available_qty);
       await client.query(
-        `INSERT INTO stock(product_id,available_qty,version) VALUES($1,$2,0)
+        `UPDATE inventory_balances
+         SET available_qty=$1,version=version+1,updated_at=now() WHERE id=$2`,
+        [quantity, current.rows[0].id],
+      );
+      await client.query(
+        `INSERT INTO stock(product_id,available_qty,version)
+         SELECT $1,coalesce(sum(b.available_qty),0)::int,0
+         FROM inventory_balances b
+         JOIN warehouses w ON w.id=b.warehouse_id
+         WHERE b.product_id=$1
+           AND w.active=true
+           AND w.type IN ('central','fulfillment')
          ON CONFLICT(product_id) DO UPDATE SET
            available_qty=EXCLUDED.available_qty,version=stock.version+1`,
-        [productId, quantity],
+        [productId],
       );
       await client.query(
         `INSERT INTO inventory_movements(
@@ -341,11 +617,16 @@ export class InventoryRepository {
       variantId,
       warehouseId,
       availableQty: quantity,
-      reservedQty: Number(current.rows[0]?.reserved_qty || 0),
+      reservedQty,
       actorId,
       reason: input.reason || '관리자 재고 조정',
     });
-    return { product_id: productId, available_qty: quantity };
+    return {
+      product_id: productId,
+      variant_id: variantId,
+      warehouse_id: warehouseId,
+      available_qty: quantity,
+    };
   }
 
   async transfer(input: any, actorId: string): Promise<any | null> {

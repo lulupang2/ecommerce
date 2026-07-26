@@ -95,8 +95,10 @@ sequenceDiagram
   O-->>I: inventory.reserve
   I-->>O: inventory.reserved
   O-->>F: order.confirmed
+  O-->>I: order.confirmed
   F-->>O: shipment.created
   F-->>O: shipment.shipped / delivered
+  F-->>I: shipment.shipped
   O-->>A: 주문 projection 이벤트
   P-->>A: 결제 projection 이벤트
   I-->>A: 재고 projection 이벤트
@@ -107,6 +109,11 @@ sequenceDiagram
 커밋합니다. publisher confirm 이후에만 발행 완료로 표시하며, 소비자는 event
 ID를 inbox에 기록해 중복 전달을 무시합니다. 실패 메시지는 1초, 5초, 30초,
 2분, 10분 순으로 재시도한 뒤 DLQ로 이동합니다.
+
+Inventory는 한 주문의 variant 예약을 단일 transaction으로 처리하고 활성 출고
+창고의 balance row를 잠가 동시 주문의 초과 판매를 막습니다. 주문 확정 전
+30분이 지난 예약은 해제하며, 취소 시 가용 재고를 복원하고 결제 잔액은 자동
+환불합니다. 출고 시에는 예약 수량만 확정 차감해 이중 차감을 방지합니다.
 
 ## 반품·환불
 

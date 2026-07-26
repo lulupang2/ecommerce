@@ -129,6 +129,42 @@ export class OrderRepository {
     };
   }
 
+  async normalizeQuoteItems(items: any[]): Promise<Array<{ variantId: string; quantity: number }>> {
+    const missingVariant = items.filter(item => !item.variantId);
+    if (!missingVariant.length) {
+      return items.map(item => ({
+        variantId: item.variantId,
+        quantity: Number(item.quantity),
+      }));
+    }
+    const productIds = [...new Set(missingVariant.map(item => item.productId))];
+    const products = await Promise.all(productIds.map(async productId => {
+      const response = await fetch(
+        `${process.env.CATALOG_URL || 'http://localhost:3002'}/products/${productId}`,
+      );
+      if (!response.ok) {
+        throw Object.assign(
+          new Error(response.status === 404 ? 'PRODUCT_UNAVAILABLE' : 'CATALOG_UNAVAILABLE'),
+          { status: response.status === 404 ? 409 : 503 },
+        );
+      }
+      return response.json() as Promise<any>;
+    }));
+    const details = new Map(products.map(product => [product.id, product]));
+    return items.map(item => {
+      const quantity = Number(item.quantity);
+      const product = details.get(item.productId);
+      const variantId = item.variantId || product?.variants?.find((variant: any) =>
+        variant.status === 'active'
+        && variant.inStock !== false
+        && Number(variant.availableQty || 0) >= quantity)?.id;
+      if (!variantId) {
+        throw Object.assign(new Error('PRODUCT_UNAVAILABLE'), { status: 409 });
+      }
+      return { variantId, quantity };
+    });
+  }
+
   async couponUsed(couponId: string, ownerId: string): Promise<boolean> {
     const used = await this.db.query(
       `SELECT 1 FROM coupon_redemptions WHERE coupon_id=$1 AND owner_id=$2`,
@@ -356,11 +392,15 @@ export class OrderRepository {
        WHERE id=$1 RETURNING *`,
       [id, status, fulfillment],
     );
-    await publish('order.status_changed', {
+    const eventPayload = {
       ...this.orderEvent(result.rows[0]),
       actorId,
       reason,
-    });
+    };
+    await publish('order.status_changed', eventPayload);
+    if (status === 'cancelled' && current.rows[0].status !== 'cancelled') {
+      await publish('order.cancelled', eventPayload);
+    }
     return { kind: 'updated', id: result.rows[0].id, status: result.rows[0].status };
   }
 
@@ -450,7 +490,10 @@ export class OrderRepository {
             { causationId: event.id, correlationId: event.correlationId },
           );
         }
-      } else if (event.type === 'inventory.failed') {
+      } else if (
+        event.type === 'inventory.failed'
+        || event.type === 'inventory.reservation_expired'
+      ) {
         const cancelled = await this.db.orm
           .update(orders)
           .set({ status: 'cancelled', paymentStatus: 'cancelled', updatedAt: new Date() })

@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { executeIdempotent, type IdempotentResult } from '@techzone/messaging/idempotency';
 import { InventoryRepository } from '../infrastructure/persistence/repository';
 
@@ -7,15 +7,45 @@ const { subscribe } = require('@techzone/messaging/bus') as {
 };
 
 @Injectable()
-export class InventoryApplicationService implements OnModuleInit {
+export class InventoryApplicationService implements OnModuleInit, OnModuleDestroy {
+  private expiryTimer?: NodeJS.Timeout;
+
   constructor(private readonly repository: InventoryRepository) {}
 
   async onModuleInit(): Promise<void> {
     await this.repository.initialize();
-    await subscribe('inventory', ['inventory.reserve', 'inventory.received'], async event => {
+    await subscribe('inventory', [
+      'inventory.reserve',
+      'inventory.received',
+      'order.confirmed',
+      'order.cancelled',
+      'shipment.shipped',
+    ], async event => {
       if (event.type === 'inventory.reserve') await this.repository.reserve(event);
       if (event.type === 'inventory.received') await this.repository.receive(event.payload);
+      if (event.type === 'order.confirmed') {
+        await this.repository.confirmReservations(event.payload.orderId);
+      }
+      if (event.type === 'order.cancelled') {
+        await this.repository.releaseReservations(
+          event.payload.orderId,
+          event.payload.reason || 'ORDER_CANCELLED',
+          event,
+        );
+      }
+      if (event.type === 'shipment.shipped') {
+        await this.repository.commitReservations(event.payload.orderId);
+      }
     });
+    const intervalMs = Number(process.env.RESERVATION_SWEEP_INTERVAL_MS || 60_000);
+    this.expiryTimer = setInterval(() => {
+      this.repository.expireReservations().catch(() => undefined);
+    }, intervalMs);
+    this.expiryTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.expiryTimer) clearInterval(this.expiryTimer);
   }
 
   idempotent<T>(
@@ -38,6 +68,13 @@ export class InventoryApplicationService implements OnModuleInit {
     return {
       status: 200,
       body: await this.repository.adjust(productId, input, actorId),
+    };
+  }
+
+  async adjustVariant(variantId: string, input: any, actorId: string): Promise<IdempotentResult> {
+    return {
+      status: 200,
+      body: await this.repository.adjustVariant(variantId, input, actorId),
     };
   }
 

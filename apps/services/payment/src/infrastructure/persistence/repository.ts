@@ -20,12 +20,22 @@ export class PaymentRepository {
   }
 
   async approve(payload: any, provider: string, paymentKey: string): Promise<any> {
-    const existing = await this.db.query(`SELECT * FROM payments WHERE order_id=$1`, [payload.orderId]);
-    if (existing.rows[0]?.status === 'approved') return existing.rows[0];
-    const paymentId = existing.rows[0]?.id || crypto.randomUUID();
     const client = await this.db.pool.connect();
     try {
       await client.query('BEGIN');
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [payload.orderId]);
+      const existing = await client.query(
+        `SELECT * FROM payments WHERE order_id=$1 FOR UPDATE`,
+        [payload.orderId],
+      );
+      if (
+        existing.rows[0]
+        && ['approved', 'partially_refunded', 'refunded'].includes(existing.rows[0].status)
+      ) {
+        await client.query('COMMIT');
+        return existing.rows[0];
+      }
+      const paymentId = existing.rows[0]?.id || crypto.randomUUID();
       await client.query(
         `INSERT INTO payments(id,order_id,status,amount,provider,payment_key,approved_at)
          VALUES($1,$2,'approved',$3,$4,$5,now())
@@ -41,27 +51,37 @@ export class PaymentRepository {
       );
       await publish('payment.approved', { ...payload, paymentId, provider }, { client });
       await client.query('COMMIT');
+      return { id: paymentId, status: 'approved' };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
     }
-    return { id: paymentId, status: 'approved' };
   }
 
   async refund(orderId: string, amount: number, reason: string, actorId: string): Promise<any | null> {
-    const payment = await this.db.query(`SELECT * FROM payments WHERE order_id=$1`, [orderId]);
-    if (!payment.rows[0]) return null;
-    const remaining = Number(payment.rows[0].amount) - Number(payment.rows[0].refunded_amount);
-    if (amount > remaining) return { invalidAmount: true, refundableAmount: remaining };
-    const refundedAmount = Number(payment.rows[0].refunded_amount) + amount;
-    const status = refundedAmount === Number(payment.rows[0].amount)
-      ? 'refunded'
-      : 'partially_refunded';
     const client = await this.db.pool.connect();
     try {
       await client.query('BEGIN');
+      const payment = await client.query(
+        `SELECT * FROM payments WHERE order_id=$1 FOR UPDATE`,
+        [orderId],
+      );
+      if (!payment.rows[0]) {
+        await client.query('COMMIT');
+        return null;
+      }
+      const remaining = Number(payment.rows[0].amount)
+        - Number(payment.rows[0].refunded_amount);
+      if (!Number.isFinite(amount) || amount <= 0 || amount > remaining) {
+        await client.query('COMMIT');
+        return { invalidAmount: true, refundableAmount: remaining };
+      }
+      const refundedAmount = Number(payment.rows[0].refunded_amount) + amount;
+      const status = refundedAmount === Number(payment.rows[0].amount)
+        ? 'refunded'
+        : 'partially_refunded';
       await client.query(
         `UPDATE payments SET refunded_amount=$2,status=$3 WHERE order_id=$1`,
         [orderId, refundedAmount, status],
@@ -82,13 +102,25 @@ export class PaymentRepository {
         reason,
       }, { client });
       await client.query('COMMIT');
+      return { orderId, refundAmount: amount, refundedAmount, status };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
     }
-    return { orderId, refundAmount: amount, refundedAmount, status };
+  }
+
+  async refundCancelledOrder(orderId: string, reason: string): Promise<void> {
+    const payment = await this.db.query(
+      `SELECT amount,refunded_amount,status FROM payments WHERE order_id=$1`,
+      [orderId],
+    );
+    if (!payment.rows[0]) return;
+    const remaining = Number(payment.rows[0].amount)
+      - Number(payment.rows[0].refunded_amount);
+    if (remaining <= 0) return;
+    await this.refund(orderId, remaining, reason, 'system');
   }
 
   async detail(orderId: string): Promise<any | null> {
