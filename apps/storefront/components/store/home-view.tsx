@@ -5,18 +5,20 @@ import StoreShell, { useStore } from '@/components/store/store-shell';
 import ProductCard from '@/components/store/product-card';
 import { storeImageUrl } from '@/lib/store-image';
 import { readRecentlyViewed } from '@/lib/recent-products';
-import { api, categories, money } from '@techzone/api-client/store';
+import { useStorefrontHome } from '@/lib/storefront-queries';
+import { categories, money } from '@techzone/api-client/store';
 
 const benefits: any[] = [[Truck,'8만원 이상 무료배송','빠르고 안전한 배송'],[ShieldCheck,'정품 보증','공식 유통 상품'],[Headphones,'고객 지원','평일 09:00–18:00'],[BadgePercent,'TECHZONE10','최대 5만원 할인']];
 
 export default function HomeView({initialData=null}){return <StoreShell><HomeContent initialData={initialData}/></StoreShell>;}
 function HomeContent({initialData}){
-  const [data,setData]=useState(initialData),[error,setError]=useState(''),[recent,setRecent]=useState<any[]>([]);const {add}=useStore();
+  const homeQuery=useStorefrontHome(initialData);
+  const data=homeQuery.data;
+  const [recent,setRecent]=useState<any[]>([]);const {add}=useStore();
   useEffect(()=>{
     setRecent(readRecentlyViewed());
-    if(!initialData)api('/storefront/home').then(setData).catch(()=>setError('스토어 정보를 불러오지 못했습니다.'));
-  },[initialData]);
-  if(!data)return <main className="mx-auto max-w-[1440px] px-4 py-10 md:px-8">{error?<p className="rounded-xl bg-red-50 p-5 text-red-700">{error}</p>:<div className="h-[520px] animate-pulse rounded-3xl bg-slate-100"/>}</main>;
+  },[]);
+  if(!data)return <main className="mx-auto max-w-[1440px] px-4 py-10 md:px-8">{homeQuery.isError?<p className="rounded-xl bg-red-50 p-5 text-red-700">스토어 정보를 불러오지 못했습니다.</p>:<div className="h-[520px] animate-pulse rounded-3xl bg-slate-100"/>}</main>;
   const section=type=>data.sections.find(item=>item.type===type);
   const hero=section('hero'),deal=section('deal'),popular=section('popular'),newItems=section('new'),brand=section('brand'),editorial=section('editorial');
   const heroProduct=hero?.products?.[0];

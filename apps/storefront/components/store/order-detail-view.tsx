@@ -1,30 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Check, Circle, CreditCard, MapPin, Package, RotateCcw, ShieldCheck, Truck } from 'lucide-react';
 import StoreShell from './store-shell';
-import { api, money, statusLabel } from '@techzone/api-client/store';
+import { money, statusLabel } from '@techzone/api-client/store';
+import { useOrderDetail } from '@/lib/storefront-queries';
 
 const steps = ['pending', 'confirmed', 'preparing', 'shipped', 'delivered'];
 
 export default function OrderDetailView({ orderNumber }) {
-  const [order, setOrder] = useState<any>(null);
-  const [error, setError] = useState('');
+  const orderQuery = useOrderDetail(orderNumber);
+  const order = orderQuery.data;
 
-  useEffect(() => {
-    const id = new URLSearchParams(location.search).get('id');
-    if (!id) {
-      setError('주문 식별 정보가 없습니다.');
-      return;
-    }
-    const guestToken = localStorage.getItem(`techzone-guest-order-${orderNumber}`);
-    api(guestToken ? `/orders/guest/${id}` : `/orders/${id}`, guestToken ? { headers: { authorization: `Bearer ${guestToken}` } } : {})
-      .then(setOrder)
-      .catch(() => setError('주문 상세를 불러오지 못했습니다.'));
-  }, [orderNumber]);
-
-  if (error) return <StoreShell><main className="mx-auto max-w-3xl p-10"><p className="rounded-xl bg-red-50 p-5 text-red-700">{error}</p></main></StoreShell>;
-  if (!order) return <StoreShell><main className="mx-auto max-w-5xl p-10"><div className="h-96 animate-pulse rounded-3xl bg-slate-100" /></main></StoreShell>;
+  if (orderQuery.missingOrderId || orderQuery.isError) return <StoreShell><main className="mx-auto max-w-3xl p-10"><p className="rounded-xl bg-red-50 p-5 text-red-700">{orderQuery.missingOrderId ? '주문 식별 정보가 없습니다.' : '주문 상세를 불러오지 못했습니다.'}</p></main></StoreShell>;
+  if (!orderQuery.accessReady || !order) return <StoreShell><main className="mx-auto max-w-5xl p-10"><div className="h-96 animate-pulse rounded-3xl bg-slate-100" /></main></StoreShell>;
 
   const current = order.status === 'cancelled' ? -1 : Math.max(0, steps.indexOf(order.status));
 

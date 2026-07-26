@@ -13,17 +13,19 @@
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "^8.0.0",
+    "@tanstack/react-query": "^5.101.4",
     "@techzone/api-client": "*",
     "@techzone/ui": "*",
     "lucide-react": "^1.25.0",
     "next": "^16.2.11",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
     "@techzone/eslint-config": "*",
     "@techzone/tsconfig": "*",
-    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^22.19.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

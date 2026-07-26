@@ -1,20 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { ArrowLeft, Check, Circle, Package } from 'lucide-react';
-import { authHeaders } from '@techzone/api-client/session';
+import { useOrderDetail } from '@/lib/storefront-queries';
 
-const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:18080/api';
 const money = value => `${new Intl.NumberFormat('ko-KR').format(value)}원`;
 const statusLabel = { pending: '처리 중', confirmed: '주문 확정', cancelled: '주문 취소' };
 
 export default function OrderDetailPage() {
-  const [view, setView] = useState({ loading: true, order: null, error: '' });
-  useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get('id');
-    if (!id) { setView({ loading: false, order: null, error: '주문 번호가 없습니다.' }); return; }
-    fetch(`${apiBase}/orders/${encodeURIComponent(id)}`, { credentials: 'include', headers: authHeaders() }).then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.code); return data; }).then(order => setView({ loading: false, order, error: '' })).catch(() => setView({ loading: false, order: null, error: '주문 상세를 불러오지 못했습니다.' }));
-  }, []);
+  const orderQuery = useOrderDetail('');
+  const view = {
+    loading: !orderQuery.accessReady || orderQuery.isPending,
+    order: orderQuery.data,
+    error: orderQuery.missingOrderId
+      ? '주문 번호가 없습니다.'
+      : orderQuery.isError
+        ? '주문 상세를 불러오지 못했습니다.'
+        : '',
+  };
 
   if (view.loading) return <main className="min-h-screen bg-[#f6f8fc] p-8 text-sm">주문 정보를 불러오는 중...</main>;
   if (view.error) return <main className="min-h-screen bg-[#f6f8fc] p-8"><a href="/orders/" className="inline-flex items-center gap-2 text-sm font-bold"><ArrowLeft size={16}/> 주문 내역</a><p className="mx-auto mt-20 max-w-xl rounded-2xl bg-red-50 p-8 text-red-700">{view.error}</p></main>;

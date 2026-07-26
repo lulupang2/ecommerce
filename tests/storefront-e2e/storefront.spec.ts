@@ -31,6 +31,46 @@ test('고객이 홈에서 상품을 탐색할 수 있다', async ({ page }) => {
   await expect(page.locator('a[href^="/products/"]').first()).toBeVisible();
 });
 
+test('장바구니와 체크아웃 서버 상태가 화면 간에 동기화된다', async ({ page }) => {
+  await gotoStorefront(page, '/shop/');
+
+  const productCard = page.locator('article').nth(1);
+  const productName = (await productCard.locator('a[href^="/products/"]').last().textContent())?.trim();
+  expect(productName).toBeTruthy();
+
+  const addResponse = page.waitForResponse(response => (
+    response.url().includes('/api/carts/')
+    && response.url().endsWith('/items')
+    && response.request().method() === 'POST'
+  ));
+  await productCard.getByRole('button', { name: '장바구니 담기' }).click({ force: true });
+  expect((await addResponse).status()).toBe(201);
+
+  const cartPanel = page.getByRole('dialog', { name: '장바구니' });
+  await expect(cartPanel).toBeVisible();
+  await expect(cartPanel).toContainText(productName!);
+
+  await gotoStorefront(page, '/cart/');
+  const cartItem = page.locator('main article').filter({ hasText: productName! });
+  await expect(cartItem).toBeVisible();
+  const quantityResponse = page.waitForResponse(response => (
+    response.url().includes('/api/carts/')
+    && response.request().method() === 'PATCH'
+  ));
+  await cartItem.getByRole('button', { name: `${productName} 수량 늘리기` }).click();
+  expect([200, 204]).toContain((await quantityResponse).status());
+  await expect(cartItem).toContainText('2');
+
+  const quoteResponse = page.waitForResponse(response => (
+    response.url().includes('/api/checkout/quote')
+    && response.request().method() === 'POST'
+  ));
+  await gotoStorefront(page, '/checkout/');
+  expect((await quoteResponse).status()).toBe(200);
+  await expect(page.getByRole('heading', { name: '최종 결제 금액' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /결제하기/ })).toBeEnabled();
+});
+
 test('@a11y 고객 홈과 상품 목록이 WCAG 2.1 AA를 충족한다', async ({ page }) => {
   test.setTimeout(60_000);
   await gotoStorefront(page, '/');

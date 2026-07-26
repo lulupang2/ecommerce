@@ -28,15 +28,28 @@ assert.ok(discounted.items.length > 0, '할인 상품 필터 결과가 있어야
 assert.ok(discounted.items.every(product => product.discountRate > 0), '할인 상품 필터에는 할인율이 있는 상품만 포함되어야 합니다.');
 assert.ok(discounted.total < allProducts.total, '비할인 상품은 할인 상품 필터에서 제외되어야 합니다.');
 
-const product = filtered.items[0];
-const detail = await request(`/products/by-slug/${product.slug}`);
+let detail;
+for (const product of allProducts.items) {
+  const candidate = await request(`/products/by-slug/${product.slug}`);
+  const hasAvailableVariant = candidate.variants.some(
+    variant => variant.availableQty > 0 && variant.salePrice >= 300_000,
+  );
+  const hasSoldOutVariant = candidate.variants.some(variant => variant.availableQty === 0);
+  if (hasAvailableVariant && hasSoldOutVariant) {
+    detail = candidate;
+    break;
+  }
+}
+assert.ok(detail, '구매 가능 옵션과 품절 옵션을 함께 가진 상품이 있어야 합니다.');
 assert.ok(detail.variants.length >= 2, '상품 상세에는 복수 variant가 있어야 합니다.');
 assert.ok(detail.images.length >= 2 && detail.specs.length >= 3, '상품 이미지와 스펙이 제공되어야 합니다.');
 assert.ok(
   detail.variants.every(variant => Number.isInteger(variant.availableQty) && typeof variant.inStock === 'boolean'),
   '상품 상세 variant에는 실제 가용 재고가 포함되어야 합니다.',
 );
-const availableVariant = detail.variants.find(variant => variant.availableQty > 0);
+const availableVariant = detail.variants.find(
+  variant => variant.availableQty > 0 && variant.salePrice >= 300_000,
+);
 const soldOutVariant = detail.variants.find(variant => variant.availableQty === 0);
 assert.ok(availableVariant, '구매 가능한 variant가 있어야 합니다.');
 assert.ok(soldOutVariant, '품절 variant가 구분되어야 합니다.');

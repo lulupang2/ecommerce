@@ -4,34 +4,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Heart, PackageCheck, ReceiptText, RotateCcw, ShieldCheck, UserRound } from 'lucide-react';
 import StoreShell from '@/components/store/store-shell';
 import ProductCard from '@/components/store/product-card';
-import { api, money, statusLabel } from '@techzone/api-client/store';
-import { readSession } from '@techzone/api-client/session';
+import { money, statusLabel } from '@techzone/api-client/store';
 import { readRecentlyViewed } from '@/lib/recent-products';
+import { useMemberOrders, useWishlistState } from '@/lib/storefront-queries';
 
 export default function Page() {
   const [recent, setRecent] = useState<any[]>([]);
-  const [wishlist, setWishlist] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [loadingOrders, setLoadingOrders] = useState(true);
-  const session = typeof window === 'undefined' ? null : readSession();
+  const wishlistQuery = useWishlistState();
+  const ordersQuery = useMemberOrders();
+  const wishlist = wishlistQuery.wishlistProducts;
+  const orders = ordersQuery.orders;
+  const loadingOrders = !ordersQuery.identityReady || (Boolean(ordersQuery.session) && ordersQuery.isPending);
+  const session = ordersQuery.session;
 
   useEffect(() => {
-    const activeSession = readSession();
     setRecent(readRecentlyViewed());
-
-    if (!activeSession?.user) {
-      setLoadingOrders(false);
-      return;
-    }
-
-    Promise.allSettled([
-      api(`/wishlists/${activeSession.user.id}`, { cache: 'no-store' }),
-      api(`/orders?userId=${encodeURIComponent(activeSession.user.id)}`),
-    ]).then(([wishlistResult, orderResult]) => {
-      if (wishlistResult.status === 'fulfilled') setWishlist(wishlistResult.value.items || []);
-      if (orderResult.status === 'fulfilled') setOrders(orderResult.value.items || []);
-      setLoadingOrders(false);
-    });
   }, []);
 
   const summary = useMemo(() => {

@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowRight, CalendarDays, PackageCheck, Search, Truck } from 'lucide-react';
 import StoreShell from '@/components/store/store-shell';
-import { api, money, statusLabel } from '@techzone/api-client/store';
-import { readSession } from '@techzone/api-client/session';
+import { money, statusLabel } from '@techzone/api-client/store';
+import { useMemberOrders } from '@/lib/storefront-queries';
 
 const filters = [
   { value: 'all', label: '전체' },
@@ -17,20 +17,15 @@ const filters = [
 ];
 
 export default function OrdersPage() {
-  const [view, setView] = useState({ loading: true, items: [] as any[], user: null as any, error: '' });
+  const ordersQuery = useMemberOrders();
+  const view = {
+    loading: !ordersQuery.identityReady || (Boolean(ordersQuery.session) && ordersQuery.isPending),
+    items: ordersQuery.orders,
+    user: ordersQuery.session?.user || null,
+    error: ordersQuery.isError ? '주문 내역을 불러오지 못했습니다.' : '',
+  };
   const [status, setStatus] = useState('all');
   const [keyword, setKeyword] = useState('');
-
-  useEffect(() => {
-    const session = readSession();
-    if (!session?.user) {
-      setView({ loading: false, items: [], user: null, error: '' });
-      return;
-    }
-    api(`/orders?userId=${encodeURIComponent(session.user.id)}`)
-      .then(data => setView({ loading: false, items: data.items || [], user: session.user, error: '' }))
-      .catch(() => setView({ loading: false, items: [], user: session.user, error: '주문 내역을 불러오지 못했습니다.' }));
-  }, []);
 
   const items = useMemo(() => view.items.filter(order => {
     const matchesStatus = status === 'all' || order.status === status;

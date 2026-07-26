@@ -1,72 +1,71 @@
 'use client';
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { ChevronDown, Heart, Home, Menu, Package, Search, ShoppingBag, UserRound, X } from 'lucide-react';
-import { API, api, categories, money, optionText } from '@techzone/api-client/store';
-import { getCurrentUserId, readSession } from '@techzone/api-client/session';
+import { categories, money, optionText } from '@techzone/api-client/store';
+import { useCartState, useSearchSuggestions, useWishlistState } from '@/lib/storefront-queries';
+import { useStorefrontUiStore } from '@/stores/storefront-ui-store';
 
-const StoreContext=createContext(null);
-export const useStore=()=>useContext(StoreContext);
-const WISHLIST_KEY='techzone-wishlist';
 const mobileNavigation: any[] = [[Home,'홈','/'],[Menu,'카테고리','/shop/'],[Search,'검색','/shop/?focus=search'],[Heart,'찜','/mypage/?tab=wishlist'],[UserRound,'MY','/orders/']];
 
-function readLocalWishlist(){
-  try{
-    const value=JSON.parse(localStorage.getItem(WISHLIST_KEY)||'[]');
-    return Array.isArray(value)?[...new Set(value.filter(item=>typeof item==='string'))]:[];
-  }catch{return [];}
+const StoreContext=createContext<any>(null);
+
+export function useStore(){
+  const store=useContext(StoreContext);
+  if(!store)throw new Error('useStore must be used inside StoreShell');
+  return store;
 }
-function writeLocalWishlist(productIds){localStorage.setItem(WISHLIST_KEY,JSON.stringify(productIds));}
+
+function useStoreValue(){
+  const cartState=useCartState();
+  const wishlistState=useWishlistState();
+  const setCartOpen=useStorefrontUiStore(state=>state.setCartOpen);
+  const cart=cartState.cart;
+  const count=cart.reduce((sum,item)=>sum+item.quantity,0);
+  const total=cart.reduce((sum,item)=>sum+Number(item.price)*item.quantity,0);
+
+  async function add(product,variant=null,quantity=1){
+    await cartState.add(product,variant,quantity);
+    setCartOpen(true);
+  }
+
+  return {
+    cart,
+    count,
+    total,
+    cartLoading:cartState.cartLoading,
+    wishlistIds:wishlistState.wishlistIds,
+    wishlistProducts:wishlistState.wishlistProducts,
+    wishlistLoading:wishlistState.wishlistLoading,
+    wishlistSession:wishlistState.session,
+    add,
+    change:cartState.change,
+    clear:cartState.clear,
+    toggleWishlist:wishlistState.toggleWishlist,
+    mergeGuestWishlist:wishlistState.mergeGuestWishlist,
+    setCartOpen,
+  };
+}
 
 export default function StoreShell({children}){
-  const [cart,setCart]=useState([]),[wishlistIds,setWishlistIds]=useState([]),[cartOpen,setCartOpen]=useState(false),[query,setQuery]=useState(''),[suggestions,setSuggestions]=useState([]),[menu,setMenu]=useState(false);
+  const store=useStoreValue();
+  const {cart,count,total,change,mergeGuestWishlist}=store;
+  const cartOpen=useStorefrontUiStore(state=>state.cartOpen);
+  const menu=useStorefrontUiStore(state=>state.menuOpen);
+  const query=useStorefrontUiStore(state=>state.searchQuery);
+  const setCartOpen=useStorefrontUiStore(state=>state.setCartOpen);
+  const setMenu=useStorefrontUiStore(state=>state.setMenuOpen);
+  const setQuery=useStorefrontUiStore(state=>state.setSearchQuery);
+  const [debouncedQuery,setDebouncedQuery]=useState('');
+  const suggestionsQuery=useSearchSuggestions(debouncedQuery);
+  const suggestions=suggestionsQuery.data?.items||[];
+
   useEffect(()=>{
-    api(`/carts/${getCurrentUserId()}`).then(data=>setCart(data.items||[])).catch(()=>{});
-    const local=readLocalWishlist();
-    setWishlistIds(local);
-    const session=readSession();
-    let cancelled=false;
-    if(session){
-      const token=session.accessToken||session.token;
-      Promise.all(local.map(productId=>api(`/wishlists/${session.user.id}/${productId}`,{method:'POST',headers:{authorization:`Bearer ${token}`}}).catch(()=>null)))
-        .then(()=>api(`/wishlists/${session.user.id}`,{cache:'no-store',headers:{authorization:`Bearer ${token}`}}))
-        .then(data=>{
-          if(cancelled)return;
-          const merged=[...new Set([...local,...(data.items||[]).map(item=>item.id)])];
-          localStorage.removeItem(WISHLIST_KEY);
-          setWishlistIds(merged);
-        })
-        .catch(()=>{});
-    }
-    function syncAcrossTabs(event){if(event.key===WISHLIST_KEY&&!readSession())setWishlistIds(readLocalWishlist());}
-    window.addEventListener('storage',syncAcrossTabs);
-    return()=>{cancelled=true;window.removeEventListener('storage',syncAcrossTabs);};
-  },[]);
-  useEffect(()=>{if(query.trim().length<2){setSuggestions([]);return;}const timer=setTimeout(()=>api(`/products?q=${encodeURIComponent(query)}&pageSize=5`).then(data=>setSuggestions(data.items||[])).catch(()=>{}),200);return()=>clearTimeout(timer);},[query]);
-  async function add(product,variant,quantity=1){const selected=variant||product.variants?.[0]||{id:product.variantId,sku:product.sku,salePrice:product.price,optionValues:product.optionValues};const existing=cart.find(item=>item.variant_id===selected.id);const item={productId:product.id,variantId:selected.id,sku:selected.sku,name:product.name,brand:product.brand,optionValues:selected.optionValues||{},image:product.image,price:Number(selected.salePrice||product.price),quantity:(existing?.quantity||0)+quantity};await api(`/carts/${getCurrentUserId()}/items`,{method:'POST',body:JSON.stringify(item)});setCart(current=>existing?current.map(value=>value.variant_id===selected.id?{...value,quantity:item.quantity}:value):[{product_id:item.productId,variant_id:item.variantId,sku:item.sku,name:item.name,brand:item.brand,option_values:item.optionValues,image:item.image,price:item.price,quantity:item.quantity},...current]);setCartOpen(true);}
-  async function change(variantId,quantity){await api(`/carts/${getCurrentUserId()}/items/${variantId}`,{method:'PATCH',body:JSON.stringify({quantity})});setCart(current=>quantity<1?current.filter(item=>item.variant_id!==variantId):current.map(item=>item.variant_id===variantId?{...item,quantity}:item));}
-  async function toggleWishlist(productId){
-    const previous=wishlistIds;
-    const removing=previous.includes(productId);
-    const next=removing?previous.filter(id=>id!==productId):[...previous,productId];
-    setWishlistIds(next);
-    const session=readSession();
-    if(!session){
-      writeLocalWishlist(next);
-      return true;
-    }
-    const token=session.accessToken||session.token;
-    try{
-      await api(`/wishlists/${session.user.id}/${productId}`,{method:removing?'DELETE':'POST',headers:{authorization:`Bearer ${token}`}});
-      return true;
-    }catch{
-      setWishlistIds(previous);
-      return false;
-    }
-  }
-  const count=cart.reduce((sum,item)=>sum+item.quantity,0),total=cart.reduce((sum,item)=>sum+Number(item.price)*item.quantity,0);
-  const value=useMemo(()=>({cart,count,total,wishlistIds,add,change,toggleWishlist,setCartOpen}),[cart,count,total,wishlistIds]);
-  const session=typeof window==='undefined'?null:readSession();
-  return <StoreContext.Provider value={value}><div className="min-h-screen bg-white pb-16 text-slate-950 md:pb-0">
+    const timer=setTimeout(()=>setDebouncedQuery(query),200);
+    return()=>clearTimeout(timer);
+  },[query]);
+  useEffect(()=>{mergeGuestWishlist().catch(()=>{});},[mergeGuestWishlist]);
+
+  return <StoreContext.Provider value={store}><div className="min-h-screen bg-white pb-16 text-slate-950 md:pb-0">
     <a href="#storefront-main" className="fixed left-4 top-4 z-[100] -translate-y-24 rounded-lg bg-slate-950 px-4 py-3 text-sm font-bold text-white transition focus:translate-y-0">본문 바로가기</a>
     <div className="bg-indigo-700 px-4 py-2 text-center text-[11px] font-bold text-white">TECHZONE10 쿠폰 · 30만원 이상 구매 시 최대 5만원 할인</div>
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur"><div className="mx-auto flex h-18 max-w-[1440px] items-center gap-6 px-4 md:px-8">

@@ -17,7 +17,7 @@ export default function Page() {
 }
 
 function CartPage() {
-  const { cart, total, change } = useStore();
+  const { cart, total, change, cartLoading } = useStore();
   const shipping = total >= 80_000 ? 0 : 3_000;
   const remaining = Math.max(0, 80_000 - total);
   const progress = Math.min(100, Math.round(total / 80_000 * 100));
@@ -33,6 +33,10 @@ function CartPage() {
         window.alert('수량을 변경하지 못했습니다.');
       }
     }
+  }
+
+  if (cartLoading) {
+    return <main className="mx-auto max-w-6xl px-4 py-10 md:px-8"><div className="h-96 animate-pulse rounded-3xl bg-slate-100" /></main>;
   }
 
   return (

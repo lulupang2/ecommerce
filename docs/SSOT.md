@@ -20,6 +20,8 @@
 | --- | --- |
 | 저장소 | npm workspaces + Turborepo 모노레포 |
 | 프론트엔드 | Next.js 16, React 19, TypeScript, Tailwind CSS 4, shadcn/ui 계열 primitive |
+| 고객 서버 상태 | TanStack Query: 장바구니·찜·상품·주문·체크아웃 견적 캐시와 mutation 정합성 |
+| 고객 UI 상태 | Zustand: 장바구니 패널·모바일 메뉴·검색 입력·비회원 로컬 찜 |
 | 관리자 목록 | TanStack Table 서버 페이지네이션·정렬·필터 |
 | 차트 | Recharts |
 | 모바일 | Capacitor 8 Android |

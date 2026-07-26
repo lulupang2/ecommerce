@@ -143,6 +143,13 @@ JSON-LD를 제공합니다. `CAPACITOR_BUILD=1`에서는 같은 화면 컴포넌
 export하고 Android 앱 셸에 동기화합니다. 관리자 앱은 별도 Next.js 배포 단위라
 모바일 번들에 포함되지 않습니다.
 
+고객 채널의 상품·장바구니·찜·주문·체크아웃 견적은 TanStack Query가 서버
+상태로 관리합니다. 홈과 상품 상세의 SSR 응답은 Query의 initial data로 연결해
+SEO와 첫 화면 응답을 유지하고, mutation은 낙관적 갱신 후 서버 데이터를
+invalidate합니다. Zustand는 장바구니 패널, 모바일 메뉴, 검색 입력과 비회원
+로컬 찜처럼 서버 SSOT가 아닌 클라이언트 UI 상태만 소유합니다. 결제수단,
+variant와 수량 등 화면 한정 상태는 React local state에 남깁니다.
+
 인증은 웹에서 HttpOnly 쿠키와 CSRF 토큰, Capacitor에서 Bearer access/refresh
 token을 사용합니다. 공개 URL은 같아도 저장 방식과 갱신 adapter는 플랫폼별로
 분리합니다.

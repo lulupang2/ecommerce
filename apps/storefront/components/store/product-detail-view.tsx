@@ -22,14 +22,15 @@ import { api, money, optionText } from '@techzone/api-client/store';
 import { readSession } from '@techzone/api-client/session';
 import { storeImageUrl } from '@/lib/store-image';
 import { saveRecentlyViewed } from '@/lib/recent-products';
+import { useStorefrontProduct } from '@/lib/storefront-queries';
 
 export default function ProductDetailView({ slug = null, id = null, initialProduct = null }) {
   return <StoreShell><ProductDetail slug={slug} id={id} initialProduct={initialProduct} /></StoreShell>;
 }
 
 function ProductDetail({ slug = null, id = null, initialProduct = null }) {
-  const [product, setProduct] = useState<any>(initialProduct);
-  const [error, setError] = useState('');
+  const productQuery = useStorefrontProduct({ slug, id, initialProduct });
+  const product = productQuery.data;
   const [variantId, setVariantId] = useState(initialProduct?.variants?.[0]?.id || '');
   const [image, setImage] = useState(initialProduct?.images?.[0]?.url || initialProduct?.image || '');
   const [quantity, setQuantity] = useState(1);
@@ -38,24 +39,15 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
   const { add, wishlistIds, toggleWishlist } = useStore();
 
   useEffect(() => {
-    function initialize(data) {
-        if (!initialProduct) setProduct(data);
-        setVariantId(
-          data.variants?.find(item => item.availableQty === null || item.availableQty > 0)?.id
-            || data.variants?.[0]?.id
-            || '',
-        );
-        setImage(data.images?.[0]?.url || data.image);
-        saveRecentlyViewed(data);
-    }
-    if (initialProduct) {
-      initialize(initialProduct);
-      return;
-    }
-    api(slug ? `/products/by-slug/${slug}` : `/products/${id}`)
-      .then(initialize)
-      .catch(() => setError('상품 정보를 불러오지 못했습니다.'));
-  }, [slug, id, initialProduct]);
+    if (!product) return;
+    setVariantId(
+      product.variants?.find(item => item.availableQty === null || item.availableQty > 0)?.id
+        || product.variants?.[0]?.id
+        || '',
+    );
+    setImage(product.images?.[0]?.url || product.image);
+    saveRecentlyViewed(product);
+  }, [product?.id]);
 
   const variant = useMemo(() => product?.variants?.find(item => item.id === variantId), [product, variantId]);
 
@@ -92,6 +84,7 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
       headers: { authorization: `Bearer ${session.accessToken || session.token}` },
       body: JSON.stringify({ title: form.get('title'), body: form.get('body') }),
     });
+    await productQuery.refetch();
     setNotice('상품 문의가 등록되었습니다.');
     event.currentTarget.reset();
   }
@@ -110,6 +103,7 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
         headers: { authorization: `Bearer ${session.accessToken || session.token}` },
         body: JSON.stringify({ rating: Number(form.get('rating')), body: form.get('body') }),
       });
+      await productQuery.refetch();
       setNotice('리뷰가 등록되어 검수 대기 중입니다.');
       event.currentTarget.reset();
     } catch (error: any) {
@@ -117,7 +111,7 @@ function ProductDetail({ slug = null, id = null, initialProduct = null }) {
     }
   }
 
-  if (error) return <main className="mx-auto max-w-4xl p-10"><p className="rounded-xl bg-red-50 p-6 text-red-700">{error}</p></main>;
+  if (productQuery.isError) return <main className="mx-auto max-w-4xl p-10"><p className="rounded-xl bg-red-50 p-6 text-red-700">상품 정보를 불러오지 못했습니다.</p></main>;
   if (!product) return <main className="mx-auto max-w-[1440px] p-8"><div className="h-[600px] animate-pulse rounded-3xl bg-slate-100" /></main>;
 
   const price = variant?.salePrice || product.price;
