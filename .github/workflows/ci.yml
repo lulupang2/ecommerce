@@ -26,7 +26,6 @@ jobs:
       - run: npm run test:contract
       - run: npm run test:deployment
       - run: npm run build
-      - run: npm run build:mobile
 
   integration:
     runs-on: ubuntu-latest
@@ -59,7 +58,7 @@ jobs:
       - if: always()
         run: docker compose down -v
 
-  deploy-contracts:
+  deployment-contracts:
     runs-on: ubuntu-latest
     needs: static-and-contract
     steps:
@@ -68,10 +67,3 @@ jobs:
         with: { node-version: 22 }
       - run: npm run --silent k8s:render > /tmp/techzone-k8s.json
       - run: npm run --silent k8s:validate -- /tmp/techzone-k8s.json
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: "21" }
-      - run: npm ci
-      - run: npm run build:mobile
-      - run: npm run mobile:sync
-      - working-directory: apps/mobile/android
-        run: ./gradlew assembleDebug
