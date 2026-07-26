@@ -8,6 +8,10 @@ TECHZONE은 테크·IT 기기 쇼핑몰을 주제로 만든 포트폴리오용 �
 > [아키텍처](docs/ARCHITECTURE.md) 순서로 읽으면 제품과 기술 선택을 빠르게
 > 파악할 수 있습니다.
 
+현재 애플리케이션·로컬 통합·CI·배포 자동화는 구현됐고, 공개 인프라 생성만
+대기 중입니다. 배포 대상과 남은 체크리스트는
+[전달 상태](docs/STATUS.md)에서 관리합니다.
+
 ## 무엇을 보여주는 프로젝트인가
 
 - 고객은 Next.js SSR 스토어에서 상품 탐색, 상세 비교, 장바구니, 쿠폰, Mock 결제, 주문 조회, 취소·반품 요청을 경험합니다.
@@ -181,6 +185,7 @@ Android debug APK는 기능 안정화 후 `TECHZONE Android Verification` 수동
 
 ## 문서
 
+- [전달 상태](docs/STATUS.md): 구현 완료 범위, 공개 배포 결정과 남은 작업
 - [Case Study](docs/CASE_STUDY.md): 문제 정의, 선택, 결과와 트레이드오프
 - [PRD](docs/PRD.md): 제품 요구사항과 완료 기준
 - [SSOT](docs/SSOT.md): 상태 ENUM, API, 데이터 불변식, 정책 기준

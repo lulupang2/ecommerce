@@ -4,6 +4,10 @@
 실제 PG·택배·SMS는 Mock adapter를 유지하고, 고객 스토어와 관리자 CMS는 같은
 HTTPS 도메인에서 제공합니다.
 
+현재 공개 인프라는 아직 생성하지 않았습니다. 1차 대상은 Naver Cloud Platform
+한국 리전이며 크레딧 확보 전에는 과금 리소스를 만들지 않습니다. 공급자 선택과
+완료 상태는 [전달 상태](STATUS.md)를 따릅니다.
+
 ## 배포 구조
 
 ```text
@@ -27,6 +31,25 @@ Grafana, Gateway 직접 포트는 `127.0.0.1`에만 바인딩합니다.
 
 관측성 스택까지 함께 실행하면 메모리 여유가 더 필요합니다. 기본 데모 명령은
 Prometheus·Tempo·Loki·Grafana를 제외하고, 필요할 때만 별도 프로필로 켭니다.
+
+### Naver Cloud Platform 준비
+
+초기 NCP 구성은 비용 통제를 위해 다음 리소스로 제한합니다.
+
+| 리소스 | 기준 |
+| --- | --- |
+| 리전 | 한국 |
+| Server | Linux, 최소 2 vCPU·8GB, 권장 4 vCPU·8GB 이상 |
+| 네트워크 | VPC, public subnet, Public IP |
+| ACG | TCP 80·443, UDP 443, 허용된 관리 IP의 SSH만 허용 |
+| 데이터 | 서버 Block Storage와 Docker volume |
+| 선택 서비스 | Object Storage 백업 |
+
+Cloud DB, Cloud DB for Cache, Ncloud Simple RabbitMQ, NKS, Load Balancer와 NAT
+Gateway는 최초 데모에서 생성하지 않습니다. 2 vCPU 구성은 비용 절감용
+최솟값이므로 GitHub Actions에서 이미지를 빌드하고 서버에서는 배포·실행만
+담당해야 합니다. 메모리 부족이나 지속적인 CPU 포화가 확인되면 사양을
+상향합니다.
 
 ## 1. DNS 준비
 
@@ -214,3 +237,13 @@ npm run demo:down
 
 `docker compose down -v`는 PostgreSQL·MinIO를 포함한 데이터를 삭제하므로 공개
 데모 서버에서 사용하지 않습니다.
+
+## 크레딧 종료
+
+크레딧 만료 최소 7일 전에 비용과 사용량을 확인합니다.
+
+1. PostgreSQL 전체 dump와 `.env.demo`, 미디어 데이터를 별도 위치에 백업합니다.
+2. 공개 데모 유지, 저가 VPS 이전, 일시 중지 중 하나를 결정합니다.
+3. 종료할 경우 DNS를 제거하고 Server, Public IP, Block Storage와 선택 서비스를
+   콘솔에서 확인해 잔여 과금을 막습니다.
+4. 공개 URL을 제거했다면 README와 포트폴리오 소개도 같은 커밋에서 갱신합니다.

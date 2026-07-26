@@ -163,6 +163,13 @@ npm run k8s:render | kubectl apply -f -
 3. readiness·liveness·startup probe와 HPA, PDB 상태를 확인합니다.
 4. 주문 smoke test와 단일 correlation ID trace를 확인합니다.
 
+## 공개 데모 준비 상태
+
+공개 인프라 프로비저닝 전에는 [전달 상태](STATUS.md)의 체크리스트를 기준으로
+작업합니다. 현재 1차 대상은 Naver Cloud Platform 한국 리전 단일 서버이며,
+크레딧 확보 전에는 과금 리소스를 생성하지 않습니다. 실제 서버 절차는
+[배포 가이드](DEPLOYMENT.md)를 사용합니다.
+
 ## 종료
 
 ```bash

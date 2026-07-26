@@ -33,6 +33,7 @@
 | 관측성 | OpenTelemetry, Prometheus, Tempo, Loki, Grafana |
 | 로컬 운영 | Docker Compose |
 | 배포 예시 | Kubernetes manifest |
+| 공개 데모 목표 | Naver Cloud Platform 한국 리전 단일 Linux 서버 |
 
 ## 3. 서비스와 데이터 소유권
 
@@ -58,6 +59,19 @@
 - 통합 조회는 Admin Query projection 또는 공개 API 계약을 사용합니다.
 - 각 서비스는 자기 Drizzle schema, migration, seed를 소유합니다.
 - 공통 패키지는 비즈니스 테이블이나 도메인 모델을 소유하지 않습니다.
+
+### 공개 배포 원칙
+
+- 공개 인프라는 크레딧 확보 후에만 생성합니다.
+- OCI와 중국 접근성은 현재 배포 범위에서 제외합니다.
+- 초기 NCP 배포는 비용과 현재 same-origin 인증 계약을 고려해 Storefront,
+  Admin, Gateway, 도메인 서비스, PostgreSQL, Redis, RabbitMQ를 단일 Linux
+  서버의 Docker Compose로 실행합니다.
+- 관리형 DB, Kubernetes, Load Balancer, NAT Gateway는 포트폴리오 데모의
+  초기 필수 구성에 포함하지 않습니다.
+- Kubernetes manifest는 운영 계약을 설명하고 검증하는 산출물이며 초기 공개
+  데모의 런타임 선택과 동일할 필요는 없습니다.
+- 상세 진행 상태와 완료 조건은 [전달 상태](STATUS.md)를 따릅니다.
 
 ## 4. 상태 ENUM
 
