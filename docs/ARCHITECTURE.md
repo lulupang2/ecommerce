@@ -129,6 +129,8 @@ transaction은 append-only로 남고, Order는 환불 금액과 Saga 결과를 �
 - `processed_events.event_id`로 동일 이벤트의 중복 반영을 막습니다.
 - 목록·검색·차트는 projection DB만 읽어 관리자 응답의 fan-out을 제거합니다.
 - projection 불일치 시 감사 사유를 남기고 `POST /admin/rebuild`로 재구성합니다.
+- 운영 상태 조회는 CQRS projection이 아닌 각 서비스의 보호된 `/internal/operations/reliability` live snapshot을 Admin Query가 짧은 timeout으로 집계합니다. 연결 실패 서비스도 누락하지 않고 `unreachable`로 반환합니다.
+- 재고 예약 목록은 Inventory가 원장을 조회하고 Admin Query가 상품 projection의 SKU·상품명을 보강합니다. 따라서 예약 상태의 소유권은 Inventory에 유지됩니다.
 
 이 선택은 관리자 데이터가 원본보다 잠시 늦을 수 있는 eventual consistency를
 허용하는 대신, 운영 조회가 여러 쓰기 서비스의 동시 가용성에 의존하지 않도록

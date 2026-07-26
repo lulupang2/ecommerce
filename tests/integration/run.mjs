@@ -200,6 +200,18 @@ assert.equal(
   'system',
   'system actor identity must be preserved in audit metadata',
 );
+const releasedReservations = await request(
+  `/admin/reservations?page=1&pageSize=100&q=${raceWinner.id}`,
+  { headers: adminHeaders },
+);
+const releasedReservation = releasedReservations.items.find(item =>
+  item.order_id === raceWinner.id && item.status === 'released');
+assert.ok(releasedReservation, 'admin reservation ledger must expose the expired reservation');
+assert.equal(
+  releasedReservation.release_reason,
+  'RESERVATION_EXPIRED',
+  'reservation ledger must preserve the automatic release reason',
+);
 
 const search = await request('/search?q=orbit');
 assert.ok(search.items.some(item => item.name.toLowerCase().includes('orbit')));
@@ -298,6 +310,16 @@ const rebuilt = await request('/admin/rebuild', { method: 'POST', headers: admin
 assert.ok(rebuilt.orders > 0 && rebuilt.products >= 8, 'admin read model must rebuild from source services');
 const dashboard = await request('/admin/dashboard', { headers: adminHeaders });
 assert.ok(dashboard.kpis && Array.isArray(dashboard.trend), 'admin dashboard projection must return KPI and trend');
+const systemStatus = await request('/admin/system-status', { headers: adminHeaders });
+assert.equal(systemStatus.services.length, 13, 'system status must include every backend application');
+assert.ok(
+  systemStatus.services.some(service => service.service === 'inventory'),
+  'system status must include inventory reliability',
+);
+assert.equal(typeof systemStatus.pendingOutbox, 'number');
+const pendingOutbox = await request('/admin/outbox?page=1&pageSize=20', { headers: adminHeaders });
+assert.ok(Array.isArray(pendingOutbox.items), 'admin outbox must return a paginated list');
+assert.equal(pendingOutbox.pageSize, 20);
 const adminProductPage = await request('/admin/products?page=1&pageSize=10&sort=price&direction=desc', { headers: adminHeaders });
 assert.equal(adminProductPage.pageSize, 10, 'admin tables must use server pagination');
 const auditLogs = await request('/admin/audit-logs?page=1&pageSize=100', { headers: adminHeaders });

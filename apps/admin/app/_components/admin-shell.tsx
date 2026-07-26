@@ -56,6 +56,7 @@ const groups = [
       { href: '/storefront/', label: '스토어 진열 CMS', icon: PanelsTopLeft, permission: 'products.read' },
       { href: '/coupons/', label: '쿠폰 관리', icon: TicketPercent, permission: 'orders.read' },
       { href: '/inventory/', label: '재고 관리', icon: Boxes, permission: 'inventory.read' },
+      { href: '/inventory/reservations/', label: '재고 예약', icon: PackageCheck, permission: 'inventory.read' },
       { href: '/procurement/', label: '공급사·발주', icon: ClipboardList, permission: 'inventory.read' },
     ],
   },
@@ -137,7 +138,12 @@ export default function AdminShell({ children }) {
             <div className="grid gap-1">
               {group.items.map(item => {
                 const Icon = item.icon;
-                const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+                const active = pathname === item.href
+                  || (
+                    item.href !== '/'
+                    && item.href !== '/inventory/'
+                    && pathname.startsWith(item.href)
+                  );
                 return (
                   <Link title={collapsed ? item.label : undefined} key={item.href} href={item.href} onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${active ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-950/20' : 'text-slate-400 hover:bg-white/5 hover:text-white'} ${collapsed ? 'justify-center' : ''}`}>
                     <Icon size={18} />

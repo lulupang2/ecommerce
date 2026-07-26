@@ -22,6 +22,7 @@ const env = [
   { name: 'FULFILLMENT_URL', value: 'http://fulfillment:3010' },
   { name: 'PROCUREMENT_URL', value: 'http://procurement:3011' },
   { name: 'ADMIN_URL', value: 'http://admin:3012' },
+  { name: 'GATEWAY_INTERNAL_URL', value: 'http://gateway:8080' },
   { name: 'INTERNAL_API_KEY', valueFrom: { secretKeyRef: { name: 'techzone-secrets', key: 'internal-api-key' } } },
   { name: 'AUTH_PRIVATE_KEY_BASE64', valueFrom: { secretKeyRef: { name: 'techzone-secrets', key: 'auth-private-key-base64', optional: true } } },
   { name: 'OTEL_EXPORTER_OTLP_ENDPOINT', value: 'http://otel-collector.observability:4318' },
