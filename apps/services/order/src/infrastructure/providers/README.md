@@ -1,3 +1,3 @@
-# Provider adapters
+# 프로바이더 어댑터
 
-External provider adapters owned by this service belong here.
+이 서비스가 소유하는 외부 프로바이더 어댑터를 이 디렉터리에서 관리합니다.

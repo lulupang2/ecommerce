@@ -1,3 +1,3 @@
-# Service migrations
+# 서비스 마이그레이션
 
-This directory is the only migration ownership boundary for this service.
+이 서비스가 소유하는 마이그레이션은 이 디렉터리에서만 관리합니다.

@@ -1,3 +1,3 @@
-# Service seeds
+# 서비스 시드 데이터
 
-Seeds run only from explicit development or test commands.
+시드 데이터는 명시적인 개발 또는 테스트 명령으로만 실행합니다.

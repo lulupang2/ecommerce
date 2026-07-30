@@ -1,3 +1,3 @@
-# Messaging adapters
+# 메시징 어댑터
 
-Outbox publishers and inbox event handlers owned by this service belong here.
+이 서비스가 소유하는 Outbox 발행기와 Inbox 이벤트 처리기를 이 디렉터리에서 관리합니다.
