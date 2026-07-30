@@ -44,9 +44,8 @@ function randomSecret(bytes = 32) {
   return crypto.randomBytes(bytes).toString('base64url');
 }
 
-export function generateDeploymentEnv({ domain, email }) {
+export function generateDeploymentEnv({ domain }) {
   if (!isDeployableDomain(domain)) throw new Error('실제 공개 도메인을 --domain으로 입력해야 합니다.');
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email || '')) throw new Error('유효한 ACME 이메일을 --email로 입력해야 합니다.');
 
   const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   const privateKeyBase64 = Buffer
@@ -57,7 +56,6 @@ export function generateDeploymentEnv({ domain, email }) {
     NODE_ENV: 'production',
     DEPLOYMENT_ENVIRONMENT: 'demo',
     DEMO_DOMAIN: domain,
-    ACME_EMAIL: email,
     PUBLIC_BIND_ADDRESS: '127.0.0.1',
     MANAGEMENT_BIND_ADDRESS: '127.0.0.1',
     ADMIN_EMAIL: `admin@${domain}`,
@@ -96,9 +94,6 @@ export function validateDeploymentEnv(values) {
     errors.push('DEPLOYMENT_ENVIRONMENT: demo 또는 production이어야 합니다.');
   }
   if (!isDeployableDomain(domain)) errors.push('DEMO_DOMAIN: 실제 공개 도메인이 필요합니다.');
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(values.ACME_EMAIL || '')) {
-    errors.push('ACME_EMAIL: 인증서 만료 알림을 받을 이메일이 필요합니다.');
-  }
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(values.ADMIN_EMAIL || '')) {
     errors.push('ADMIN_EMAIL: 유효한 관리자 이메일이 필요합니다.');
   }

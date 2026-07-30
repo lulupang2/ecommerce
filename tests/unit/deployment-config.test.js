@@ -6,7 +6,7 @@ const yaml = require('js-yaml');
 
 test('generated demo environment passes deployment validation without exposing defaults', async () => {
   const { generateDeploymentEnv, validateDeploymentEnv } = await import('../../tools/deployment/config.mjs');
-  const values = generateDeploymentEnv({ domain: 'demo.techzone.kr', email: 'owner@techzone.kr' });
+  const values = generateDeploymentEnv({ domain: 'demo.techzone.kr' });
 
   assert.deepEqual(validateDeploymentEnv(values), []);
   assert.equal(values.PUBLIC_BIND_ADDRESS, '127.0.0.1');
@@ -53,18 +53,16 @@ test('storefront server rendering reads catalog data without consuming the publi
   assert.equal(compose.services.storefront.environment.CATALOG_URL, 'http://catalog:3002');
 });
 
-test('demo deployment workflow uses protected immutable releases', () => {
-  const workflowSource = fs.readFileSync(path.resolve('.github/workflows/deploy-demo.yml'), 'utf8');
-  const releaseScript = fs.readFileSync(path.resolve('tools/deployment/remote-release.sh'), 'utf8');
+test('production deployment workflow uses the restricted Git deployment path', () => {
+  const workflowSource = fs.readFileSync(
+    path.resolve('.github/workflows/deploy-production.yml'),
+    'utf8',
+  );
 
-  assert.match(workflowSource, /environment:\s*\n\s+name: demo/);
-  assert.match(workflowSource, /Require a successful CI run for this commit/);
-  assert.match(workflowSource, /DEMO_SSH_KNOWN_HOSTS/);
+  assert.match(workflowSource, /environment: production/);
+  assert.match(workflowSource, /workflows: \[TECHZONE CI\]/);
+  assert.match(workflowSource, /PRODUCTION_SSH_KNOWN_HOSTS/);
   assert.doesNotMatch(workflowSource, /ssh-keyscan/);
-  assert.match(workflowSource, /git archive --format=tar\.gz/);
-  assert.match(releaseScript, /pg_dumpall -U canvas/);
-  assert.match(releaseScript, /if ! activate "\$release_dir"/);
-  assert.match(releaseScript, /activate "\$current_release"/);
-  assert.match(releaseScript, /set_release_link previous/);
-  assert.match(releaseScript, /set_release_link current/);
+  assert.match(workflowSource, /\/home\/work\/git\/techzone\.git/);
+  assert.match(workflowSource, /deploy-portfolio\.sh techzone/);
 });

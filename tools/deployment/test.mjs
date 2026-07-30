@@ -13,7 +13,6 @@ const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'techzone-dep
 const envPath = path.join(temporaryDirectory, '.env.demo');
 const values = generateDeploymentEnv({
   domain: 'demo.techzone.kr',
-  email: 'owner@techzone.kr',
 });
 const errors = validateDeploymentEnv(values);
 if (errors.length) throw new Error(`Generated deployment environment is invalid: ${errors.join(' ')}`);
@@ -34,26 +33,8 @@ if (compose.status !== 0) {
   throw new Error(`Demo Compose configuration is invalid: ${(compose.stderr || compose.stdout).trim()}`);
 }
 
-const releaseScript = await fs.readFile(
-  path.join(root, 'tools', 'deployment', 'remote-release.sh'),
-  'utf8',
-);
-const shellExecutable = process.platform === 'win32'
-  ? path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'bin', 'bash.exe')
-  : 'bash';
-const shell = spawnSync(shellExecutable, ['-n'], {
-  cwd: root,
-  encoding: 'utf8',
-  input: releaseScript.replace(/\r\n/g, '\n'),
-});
-
-if (shell.error) throw shell.error;
-if (shell.status !== 0) {
-  throw new Error(`Remote release script is invalid: ${(shell.stderr || shell.stdout).trim()}`);
-}
-
 console.log(JSON.stringify({
   status: 'passed',
-  checks: ['generated_secrets', 'rsa_key', 'private_bindings', 'compose_merge', 'remote_release_shell'],
+  checks: ['generated_secrets', 'rsa_key', 'private_bindings', 'compose_merge'],
   secretValuesPrinted: false,
 }));

@@ -8,15 +8,14 @@ function argument(name) {
 
 const positional = process.argv.slice(2).filter(value => !value.startsWith('--'));
 const domain = argument('domain') || positional[0];
-const email = argument('email') || positional[1];
-const output = path.resolve(argument('output') || positional[2] || '.env.demo');
+const output = path.resolve(argument('output') || '.env.demo');
 
-if (!domain || !email) {
-  console.error('사용법: npm run demo:env -- demo.example.kr owner@example.kr');
+if (!domain || positional.length > 1) {
+  console.error('사용법: npm run demo:env -- demo.example.kr [--output=.env.demo]');
   process.exit(1);
 }
 
-const values = generateDeploymentEnv({ domain: domain.toLowerCase(), email });
+const values = generateDeploymentEnv({ domain: domain.toLowerCase() });
 
 try {
   await fs.writeFile(output, serializeEnv(values), { encoding: 'utf8', flag: 'wx', mode: 0o600 });

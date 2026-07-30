@@ -12,19 +12,22 @@ HTTPS 도메인에서 제공합니다.
 
 ```text
 Internet
-  └─ Caddy :80/:443
+  └─ Host Caddy (systemd) :80/:443
        ├─ demo.example.kr       → Edge Nginx → Storefront/Admin/Gateway
        ├─ media.demo.example.kr → MinIO API
        └─ grafana.demo.example.kr → Grafana (observability 프로필 사용 시)
 ```
 
-Caddy가 TLS 인증서 발급과 갱신을 담당합니다. PostgreSQL, RabbitMQ, MinIO Console,
-Grafana, Gateway 직접 포트는 `127.0.0.1`에만 바인딩합니다.
+Rocky Linux 호스트에 설치한 Caddy가 TLS 인증서 발급과 갱신을 담당합니다.
+애플리케이션 Compose에는 Caddy를 포함하지 않으며 웹과 관리 포트는
+`127.0.0.1`에만 바인딩합니다. PostgreSQL, RabbitMQ와 MinIO Console은 외부에
+노출하지 않습니다.
 
 ## 요구 환경
 
 - 공개 IPv4가 있는 Linux x86_64 서버
 - Docker Engine과 Docker Compose v2
+- 호스트에 systemd 서비스로 설치된 Caddy
 - Node.js 22 이상과 npm 10
 - 권장 시작 사양: 4 vCPU, 메모리 8GB, SSD 50GB
 - 인바운드 허용 포트: TCP 80·443, UDP 443, 관리용 SSH
@@ -63,17 +66,43 @@ Gateway는 최초 데모에서 생성하지 않습니다. 2 vCPU 구성은 비�
 
 DNS 전파가 끝나기 전에는 Caddy의 인증서 발급이 완료되지 않습니다.
 
+호스트 Caddy는 `/etc/caddy/Caddyfile`에서 Docker가 공개한 루프백 포트로
+프록시합니다.
+
+```caddyfile
+demo.example.kr {
+  encode zstd gzip
+  reverse_proxy 127.0.0.1:15173
+}
+
+media.demo.example.kr {
+  encode zstd gzip
+  reverse_proxy 127.0.0.1:19000
+}
+
+grafana.demo.example.kr {
+  encode zstd gzip
+  reverse_proxy 127.0.0.1:13000
+}
+```
+
+```bash
+sudo caddy fmt --overwrite /etc/caddy/Caddyfile
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl enable --now caddy
+```
+
 ## 2. 비밀 환경파일 생성
 
-저장소를 내려받고 실제 도메인과 인증서 알림 이메일로 환경파일을 생성합니다.
+저장소를 내려받고 실제 도메인으로 애플리케이션 환경파일을 생성합니다. 인증서
+설정은 호스트의 `/etc/caddy/Caddyfile`에서 별도로 관리합니다.
 
 ```bash
 git clone https://github.com/lulupang2/ecommerce.git
 cd ecommerce
 npm ci
 npm run demo:env -- \
-  demo.example.kr \
-  owner@example.kr
+  demo.example.kr
 ```
 
 명령은 RSA 2048 서명키와 관리자·DB·RabbitMQ·MinIO·Grafana 비밀번호를 무작위로
@@ -132,55 +161,50 @@ curl --fail https://demo.example.kr/admin/
 
 ### GitHub Actions 자동 배포
 
-최초 한 번만 서버에 배포 계정과 공유 환경파일을 준비합니다. 배포 계정은 Docker를
-실행할 수 있어야 하며 `/opt/techzone`을 소유해야 합니다.
+운영 서버는 `work` 계정의 bare Git 저장소와 고정된 작업 트리를 사용합니다.
+`work` 계정은 Docker 실행 권한을 가져야 하며, 최초 한 번만 다음 경로와 서버별
+Compose·환경파일을 준비합니다.
 
 ```bash
-sudo install -d -o "$USER" -g "$USER" \
-  /opt/techzone/shared \
-  /opt/techzone/releases \
-  /opt/techzone/backups
+install -d \
+  /home/work/git \
+  /home/work/portfolio/techzone \
+  /home/work/deploy-state \
+  /home/work/.locks
 
-git clone https://github.com/lulupang2/ecommerce.git /tmp/techzone-bootstrap
-cd /tmp/techzone-bootstrap
-npm ci
-npm run demo:env -- demo.example.kr owner@example.kr
-install -m 0600 .env.demo /opt/techzone/shared/.env.demo
+git init --bare /home/work/git/techzone.git
+chmod 700 /home/work/portfolio/techzone/.env.server
 ```
 
-GitHub 저장소의 `demo` Environment에 다음 값을 등록합니다.
+`/home/work/bin/deploy-portfolio.sh`는 커밋을
+`/home/work/portfolio/techzone`에 checkout하고, `.env.server`와
+`compose.server.yml`을 사용해 컨테이너를 재생성한 뒤 공개 HTTPS smoke test를
+실행합니다. 실패하면 직전 커밋으로 되돌립니다.
+
+GitHub 저장소의 `production` Environment에 다음 값을 등록합니다.
 
 | 종류 | 이름 | 값 |
 | --- | --- | --- |
-| Secret | `DEMO_SSH_HOST` | 서버 호스트명 또는 IPv4 |
-| Secret | `DEMO_SSH_USER` | Docker 실행 권한이 있는 배포 계정 |
-| Secret | `DEMO_SSH_PRIVATE_KEY` | 배포 전용 Ed25519 개인키 |
-| Secret | `DEMO_SSH_KNOWN_HOSTS` | 사전에 확인한 서버 host key 한 줄 |
-| Variable | `DEMO_DOMAIN` | 공개 데모 도메인 |
-| Variable | `DEMO_SSH_PORT` | SSH 포트, 기본값 `22` |
-| Variable | `DEMO_DEPLOY_ROOT` | 배포 루트, 기본값 `/opt/techzone` |
+| Secret | `PRODUCTION_SSH_HOST` | 서버 호스트명 또는 IPv4 |
+| Secret | `PRODUCTION_SSH_PRIVATE_KEY` | 배포 전용 Ed25519 개인키 |
+| Secret | `PRODUCTION_SSH_KNOWN_HOSTS` | 사전에 확인한 서버 host key 한 줄 |
 
-`DEMO_SSH_KNOWN_HOSTS`는 신뢰할 수 있는 경로에서 서버 fingerprint를 확인한 뒤
+`PRODUCTION_SSH_KNOWN_HOSTS`는 신뢰할 수 있는 경로에서 서버 fingerprint를 확인한 뒤
 등록합니다. 워크플로 안에서 `ssh-keyscan`으로 즉석 수집하지 않습니다.
 
-Actions의 `Deploy TECHZONE Demo` 워크플로를 열고 `deploy`를 실행합니다. 워크플로는
-해당 `main` commit의 CI 성공 여부를 확인하고, 불변 릴리스 디렉터리에 소스를
-전송한 뒤 다음 순서로 처리합니다.
+`main`의 `TECHZONE CI`가 성공하면 `Deploy TECHZONE Production`이 자동으로
+실행됩니다.
 
-1. 기존 PostgreSQL 전체 백업
-2. 환경·Compose 사전 검사
+1. 검증된 커밋을 `/home/work/git/techzone.git`에 푸시
+2. 해당 SHA를 작업 트리에 checkout
 3. 이미지 빌드와 migration·서비스 기동
-4. Gateway·Storefront·Admin·Media HTTPS 스모크 테스트
-5. 성공 시 `current`/`previous` 릴리스 포인터 교체
-6. 실패 시 직전 릴리스를 자동 재기동
+4. Storefront와 Admin HTTPS smoke test
+5. 성공한 SHA를 `/home/work/deploy-state/techzone.current`에 기록
+6. 실패 시 직전 성공 SHA를 다시 checkout하고 재기동
 
 GitHub Environment의 required reviewer를 설정하면 실제 반영 전에 수동 승인을
-강제할 수 있습니다. 관측성 스택은 워크플로의 `observability` 옵션으로 선택합니다.
-
-직전 버전으로 되돌릴 때는 같은 워크플로에서 `rollback`을 선택합니다. 롤백
-직전에도 DB 백업을 만들고 스모크 테스트를 통과한 경우에만 릴리스 포인터를
-교체합니다. SQL migration 자체를 역으로 실행하지는 않으므로 비호환 DB 변경은
-`/opt/techzone/backups`의 dump를 이용한 별도 복구가 필요합니다.
+강제할 수 있습니다. SQL migration 자체를 역으로 실행하지 않으므로 비호환 DB
+변경은 별도 PostgreSQL 백업에서 복구해야 합니다.
 
 ### 수동 업데이트
 
@@ -206,9 +230,9 @@ docker compose \
   exec -T postgres pg_dumpall -U canvas > techzone-backup.sql
 ```
 
-`.env.demo`, PostgreSQL dump, Caddy의 `caddy-data` 볼륨을 서로 다른 안전한 위치에
-보관합니다. `.env.demo`를 잃으면 기존 JWT 서명키와 서비스 비밀값을 복구할 수
-없습니다.
+`.env.demo`, PostgreSQL dump와 호스트 Caddy의 `/var/lib/caddy` 데이터를 서로
+다른 안전한 위치에 보관합니다. `.env.demo`를 잃으면 기존 JWT 서명키와 서비스
+비밀값을 복구할 수 없습니다.
 
 ## 6. 운영 점검
 
@@ -224,7 +248,9 @@ docker compose \
   --env-file .env.demo \
   -f docker-compose.yml \
   -f infra/docker/compose.demo.yml \
-  logs --tail=200 caddy gateway auth order inventory
+  logs --tail=200 gateway auth order inventory
+
+sudo journalctl -u caddy -n 200 --no-pager
 ```
 
 ## 종료
