@@ -1,0 +1,92 @@
+x-node-low: &node-low
+  deploy:
+    resources:
+      limits:
+        memory: 80M
+  environment:
+    # OpenTelemetry collector가 없는 저메모리 공개 데모에서는 각 프로세스의
+    # preload와 exporter 연결을 끈다. 관측성 검증은 기본 Compose 프로필에서 수행한다.
+    NODE_OPTIONS: "--max-old-space-size=56"
+    PG_POOL_MAX: "3"
+
+x-node-medium: &node-medium
+  deploy:
+    resources:
+      limits:
+        memory: 128M
+  environment:
+    NODE_OPTIONS: "--max-old-space-size=96"
+    PG_POOL_MAX: "3"
+
+services:
+  postgres:
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    command: postgres -c shared_buffers=64MB -c max_connections=50
+
+  rabbitmq:
+    deploy:
+      resources:
+        limits:
+          memory: 160M
+
+  redis:
+    deploy:
+      resources:
+        limits:
+          memory: 80M
+    command: redis-server --appendonly yes --maxmemory 48mb --maxmemory-policy noeviction
+
+  minio:
+    deploy:
+      resources:
+        limits:
+          memory: 160M
+
+  migration:
+    <<: *node-low
+  seed:
+    <<: *node-low
+  auth:
+    <<: *node-low
+  catalog:
+    <<: *node-low
+  cart:
+    <<: *node-low
+  order:
+    <<: *node-low
+  payment:
+    <<: *node-low
+  inventory:
+    <<: *node-low
+  notification:
+    <<: *node-low
+  search:
+    <<: *node-low
+  media:
+    <<: *node-low
+  fulfillment:
+    <<: *node-low
+  procurement:
+    <<: *node-low
+  admin:
+    <<: *node-low
+  gateway:
+    <<: *node-medium
+
+  storefront:
+    deploy:
+      resources:
+        limits:
+          memory: 160M
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=112"
+  admin-web:
+    deploy:
+      resources:
+        limits:
+          memory: 160M
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=112"

@@ -13,7 +13,7 @@ HTTPS 도메인에서 제공합니다.
 ```text
 Internet
   └─ Host Caddy (systemd) :80/:443
-       ├─ demo.example.kr       → Edge Nginx → Storefront/Admin/Gateway
+       ├─ demo.example.kr       → Host Caddy → Storefront/Admin/Gateway
        ├─ media.demo.example.kr → MinIO API
        └─ grafana.demo.example.kr → Grafana (observability 프로필 사용 시)
 ```
@@ -29,7 +29,7 @@ Rocky Linux 호스트에 설치한 Caddy가 TLS 인증서 발급과 갱신을 �
 - Docker Engine과 Docker Compose v2
 - 호스트에 systemd 서비스로 설치된 Caddy
 - Node.js 22 이상과 npm 10
-- 권장 시작 사양: 4 vCPU, 메모리 8GB, SSD 50GB
+- 저메모리 데모 기준: 2 vCPU, 메모리 4GB, SSD 50GB 이상
 - 인바운드 허용 포트: TCP 80·443, UDP 443, 관리용 SSH
 
 관측성 스택까지 함께 실행하면 메모리 여유가 더 필요합니다. 기본 데모 명령은
@@ -42,7 +42,7 @@ Prometheus·Tempo·Loki·Grafana를 제외하고, 필요할 때만 별도 프로
 | 리소스 | 기준 |
 | --- | --- |
 | 리전 | 한국 |
-| Server | Linux, 최소 2 vCPU·8GB, 권장 4 vCPU·8GB 이상 |
+| Server | Linux, 2 vCPU·4GB 이상(두 스택 동시 실행 기준) |
 | 네트워크 | VPC, public subnet, Public IP |
 | ACG | TCP 80·443, UDP 443, 허용된 관리 IP의 SSH만 허용 |
 | 데이터 | 서버 Block Storage와 Docker volume |
@@ -67,12 +67,27 @@ Gateway는 최초 데모에서 생성하지 않습니다. 2 vCPU 구성은 비�
 DNS 전파가 끝나기 전에는 Caddy의 인증서 발급이 완료되지 않습니다.
 
 호스트 Caddy는 `/etc/caddy/Caddyfile`에서 Docker가 공개한 루프백 포트로
-프록시합니다.
+직접 프록시합니다. 공개 서버에서는 `compose.caddy.yml` 오버레이를 사용해
+컨테이너 Nginx를 기동하지 않습니다. `/api`와 `/health`는 Gateway, `/admin`은
+관리자 Next.js, 나머지는 Storefront Next.js로 전달합니다.
 
 ```caddyfile
 demo.example.kr {
   encode zstd gzip
-  reverse_proxy 127.0.0.1:15173
+
+  @gateway path /api /api/* /health /health/*
+  handle @gateway {
+    reverse_proxy 127.0.0.1:18080
+  }
+
+  @admin path /admin /admin/*
+  handle @admin {
+    reverse_proxy 127.0.0.1:15174
+  }
+
+  handle {
+    reverse_proxy 127.0.0.1:15173
+  }
 }
 
 media.demo.example.kr {
@@ -128,9 +143,27 @@ npm run demo:preflight
 
 가벼운 공개 데모:
 
+공개 서버의 권장 경량 구성은 호스트 Caddy가 edge를 담당합니다.
+
 ```bash
-npm run demo:up
+npm run demo:up:caddy
 ```
+
+4GB급 VPS에서 두 스택을 함께 실행하는 포트폴리오용 경량 구성은 다음 명령을
+사용합니다. 2GB 서버에서는 Commerce 또는 QuakeCurrent 중 한 스택만 실행하는
+것을 권장합니다.
+Node.js 서비스의 OpenTelemetry preload를 끄고, DB connection pool·Redis·각
+컨테이너 메모리 상한을 낮춘 구성입니다.
+
+```bash
+npm run demo:up:low-memory
+```
+
+이 구성은 저트래픽 데모용입니다. 주문·관리자 smoke test와 메모리 압박을 먼저
+확인하고, 프로덕션 트래픽이나 관측성 데모에는 기본 Compose 구성을 사용합니다.
+
+컨테이너만으로 전체 경로를 재현해야 하는 로컬·CI 환경은 기존 Nginx edge를
+포함한 `npm run demo:up`을 사용합니다.
 
 Grafana와 전체 관측성 스택 포함:
 
@@ -212,7 +245,7 @@ GitHub Environment의 required reviewer를 설정하면 실제 반영 전에 수
 git pull --ff-only
 npm ci
 npm run demo:preflight
-npm run demo:up
+npm run demo:up:caddy
 ```
 
 migration은 애플리케이션보다 먼저 실행되고, 기존 적용 이력은
@@ -240,8 +273,8 @@ docker compose \
 - 관리자 `/admin/system/`에서 outbox 지연, DLQ, 실패 Saga를 확인합니다.
 - 관측성 프로필 사용 시 Grafana의 오류율·p95·RabbitMQ·DB pool 대시보드를
   확인합니다.
-- 공개 서버에서는 15173, 18080, 13000, 15672, 19000, 19001 포트를 방화벽으로
-  열지 않습니다.
+- 공개 서버에서는 15173, 15174, 18080, 13000, 15672, 19000, 19001 포트를
+  방화벽으로 열지 않습니다. Caddy만 루프백 포트에 접근합니다.
 
 ```bash
 docker compose \
@@ -258,7 +291,7 @@ sudo journalctl -u caddy -n 200 --no-pager
 컨테이너만 종료하고 데이터 볼륨은 보존합니다.
 
 ```bash
-npm run demo:down
+npm run demo:down:caddy
 ```
 
 `docker compose down -v`는 PostgreSQL·MinIO를 포함한 데이터를 삭제하므로 공개

@@ -103,3 +103,34 @@ Kubernetes 46개 리소스 검증을 별도 gate로 실행해 drift를 줄입니
 증명하지는 못합니다. Kubernetes manifest와 장애 복구 테스트는 운영 설계
 산출물로 유지하고, 공개 데모에서는 백업·불변 릴리스·자동 롤백과 리소스
 모니터링으로 위험을 제한합니다.
+
+## ADR-009: 공개 데모 edge는 호스트 Caddy로 통합한다
+
+**결정:** 로컬·CI는 컨테이너 Nginx로 same-origin 경로를 재현하고, 단일 서버의
+공개 데모는 `compose.caddy.yml` 오버레이로 Nginx를 제외한 뒤 호스트 Caddy가
+Gateway·Admin·Storefront로 직접 라우팅합니다.
+
+**이유:** 서버에 이미 필요한 TLS 종단과 여러 포트폴리오 도메인의 라우팅을 Caddy
+하나로 통합할 수 있습니다. 별도 edge 컨테이너와 프록시 한 단계를 제거하면서
+기존 쿠키·CSRF의 same-origin 계약도 유지합니다.
+
+**비용:** Nginx 하나의 메모리 절감은 수십 MB 수준이라 전체 4GB 목표의 핵심
+최적화는 아닙니다. Caddyfile과 Compose 포트 계약을 함께 관리해야 하며, 로컬·CI의
+Nginx 경로와 공개 Caddy 경로를 각각 smoke test로 검증해야 합니다.
+
+## ADR-010: 저트래픽 데모에는 제한된 메모리 프로필을 사용한다
+
+**결정:** 공개 포트폴리오 서버에서는 `compose.low-memory.yml`을 선택적으로
+사용합니다. 상시 실행 Node.js 도메인 서비스는 80MB, Gateway는 128MB,
+Storefront·Admin은 160MB로 제한하고, PostgreSQL 256MB·RabbitMQ 160MB·Redis
+80MB·MinIO 160MB 상한을 둡니다. migration·seed는 실행 후 종료되는 작업이라
+같은 80MB 제한만 적용하며, OpenTelemetry preload는 비활성화합니다.
+
+**이유:** 트래픽이 거의 없는 데모에서는 무제한 힙과 관측성 exporter가 실제
+기능에 비해 큰 상주 메모리를 차지합니다. 상시 실행 컨테이너의 합산 상한은
+약 2,064MiB(초기화용 migration·seed 제외)로 고정해 4GB급 VPS에서 OS와 Docker
+여유를 남깁니다. 서비스 경계와 API·이벤트 흐름은 유지합니다.
+
+**비용:** 메모리 상한을 넘는 순간 프로세스가 OOM 종료될 수 있고, 관측성 데이터는
+수집되지 않습니다. 주문·관리자 smoke test와 `docker stats`를 배포 후 확인하며,
+실사용 트래픽·관측성 검증이 필요하면 기본 프로필 또는 더 큰 서버로 전환합니다.

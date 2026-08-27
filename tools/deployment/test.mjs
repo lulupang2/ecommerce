@@ -33,8 +33,39 @@ if (compose.status !== 0) {
   throw new Error(`Demo Compose configuration is invalid: ${(compose.stderr || compose.stdout).trim()}`);
 }
 
+const caddyCompose = spawnSync(process.platform === 'win32' ? 'docker.exe' : 'docker', [
+  'compose',
+  '--env-file', envPath,
+  '-f', path.join(root, 'docker-compose.yml'),
+  '-f', path.join(root, 'infra', 'docker', 'compose.demo.yml'),
+  '-f', path.join(root, 'infra', 'docker', 'compose.caddy.yml'),
+  'config',
+  '--quiet',
+], { cwd: root, encoding: 'utf8' });
+
+if (caddyCompose.error) throw caddyCompose.error;
+if (caddyCompose.status !== 0) {
+  throw new Error(`Caddy Compose configuration is invalid: ${(caddyCompose.stderr || caddyCompose.stdout).trim()}`);
+}
+
+const lowMemoryCompose = spawnSync(process.platform === 'win32' ? 'docker.exe' : 'docker', [
+  'compose',
+  '--env-file', envPath,
+  '-f', path.join(root, 'docker-compose.yml'),
+  '-f', path.join(root, 'infra', 'docker', 'compose.demo.yml'),
+  '-f', path.join(root, 'infra', 'docker', 'compose.caddy.yml'),
+  '-f', path.join(root, 'infra', 'docker', 'compose.low-memory.yml'),
+  'config',
+  '--quiet',
+], { cwd: root, encoding: 'utf8' });
+
+if (lowMemoryCompose.error) throw lowMemoryCompose.error;
+if (lowMemoryCompose.status !== 0) {
+  throw new Error(`Low-memory Compose configuration is invalid: ${(lowMemoryCompose.stderr || lowMemoryCompose.stdout).trim()}`);
+}
+
 console.log(JSON.stringify({
   status: 'passed',
-  checks: ['generated_secrets', 'rsa_key', 'private_bindings', 'compose_merge'],
+  checks: ['generated_secrets', 'rsa_key', 'private_bindings', 'compose_merge', 'caddy_compose_merge', 'low_memory_compose_merge'],
   secretValuesPrinted: false,
 }));

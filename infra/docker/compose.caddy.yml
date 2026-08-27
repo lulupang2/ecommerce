@@ -1,0 +1,14 @@
+services:
+  # 공개 서버에서는 호스트 Caddy가 same-origin edge를 담당한다. 로컬·CI의
+  # 기본 Nginx edge는 유지하되 이 오버레이를 사용할 때는 명시적 profile 뒤로
+  # 이동시켜 기동하지 않는다.
+  web:
+    profiles: [container-edge]
+
+  storefront:
+    ports:
+      - "${PUBLIC_BIND_ADDRESS:-127.0.0.1}:15173:3000"
+
+  admin-web:
+    ports:
+      - "${PUBLIC_BIND_ADDRESS:-127.0.0.1}:15174:3001"
