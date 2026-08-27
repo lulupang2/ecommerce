@@ -30,7 +30,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 160M
+          memory: 256M
 
   redis:
     deploy:
@@ -43,7 +43,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 160M
+          memory: 192M
 
   migration:
     <<: *node-low

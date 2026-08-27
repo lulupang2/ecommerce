@@ -122,13 +122,13 @@ Nginx 경로와 공개 Caddy 경로를 각각 smoke test로 검증해야 합니�
 
 **결정:** 공개 포트폴리오 서버에서는 `compose.low-memory.yml`을 선택적으로
 사용합니다. 상시 실행 Node.js 도메인 서비스는 80MB, Gateway는 128MB,
-Storefront·Admin은 160MB로 제한하고, PostgreSQL 256MB·RabbitMQ 160MB·Redis
-80MB·MinIO 160MB 상한을 둡니다. migration·seed는 실행 후 종료되는 작업이라
+Storefront·Admin은 160MB로 제한하고, PostgreSQL 256MB·RabbitMQ 256MB·Redis
+80MB·MinIO 192MB 상한을 둡니다. migration·seed는 실행 후 종료되는 작업이라
 같은 80MB 제한만 적용하며, OpenTelemetry preload는 비활성화합니다.
 
 **이유:** 트래픽이 거의 없는 데모에서는 무제한 힙과 관측성 exporter가 실제
 기능에 비해 큰 상주 메모리를 차지합니다. 상시 실행 컨테이너의 합산 상한은
-약 2,064MiB(초기화용 migration·seed 제외)로 고정해 4GB급 VPS에서 OS와 Docker
+약 2,192MiB(초기화용 migration·seed 제외)로 고정해 4GB급 VPS에서 OS와 Docker
 여유를 남깁니다. 서비스 경계와 API·이벤트 흐름은 유지합니다.
 
 **비용:** 메모리 상한을 넘는 순간 프로세스가 OOM 종료될 수 있고, 관측성 데이터는
